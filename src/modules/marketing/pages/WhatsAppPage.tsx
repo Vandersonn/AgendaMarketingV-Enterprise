@@ -22,6 +22,7 @@ export function WhatsAppPage() {
   const channel = channels.find((item) => item.id === channelId) || channels[0]
 
   function openWhatsApp() {
+    if (!channel.enabled) return setStatus('O canal selecionado está desativado. Ative-o antes de continuar.')
     if (!selected?.phone) return setStatus('O cliente selecionado não possui WhatsApp.')
     const digits = selected.phone.replace(/\D/g, '')
     const number = digits.startsWith('55') ? digits : `55${digits}`
