@@ -4,7 +4,10 @@ const path = require('path')
 const crypto = require('crypto')
 
 const PORT = Number(process.env.PORT || 8787)
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'change-me-now'
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN
+if (!ADMIN_TOKEN || ADMIN_TOKEN.length < 32 || ADMIN_TOKEN === 'change-me-now') {
+  throw new Error('ADMIN_TOKEN é obrigatório e deve ter pelo menos 32 caracteres.')
+}
 const DATA_DIR = path.join(__dirname, 'data')
 const DB_FILE = path.join(DATA_DIR, 'license-server.json')
 
