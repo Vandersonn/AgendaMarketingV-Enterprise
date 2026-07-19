@@ -163,3 +163,21 @@ test('sincronização do celular usa vCard sem presumir consentimento', () => {
   assert.match(page, /10 \* 1024 \* 1024/)
   assert.doesNotMatch(page, /deletePhoneContact|navigator\.contacts/)
 })
+
+
+test('integrações não persistem segredos e Google exige armazenamento criptografado', () => {
+  const hub = read('src/lib/integrationHubStore.ts')
+  const hubPage = read('src/modules/integrations/pages/IntegrationHubPage.tsx')
+  const integrations = read('src/modules/integrations/pages/IntegrationsPage.tsx')
+  const cloudPage = read('src/modules/integrations/pages/CloudConnectPage.tsx')
+  const electron = read('electron/main.cjs')
+  assert.match(hub, /validatePublicHttpsUrl/)
+  assert.match(hub, /apiKey: ''/)
+  assert.doesNotMatch(hubPage, /Token ou chave|Bearer Token|X-API-Key/)
+  assert.doesNotMatch(integrations, /key: 'whatsappWebhook'/)
+  assert.match(integrations, /whatsappWebhook: ''/)
+  assert.match(electron, /Armazenamento seguro indisponível/)
+  assert.doesNotMatch(electron, /Buffer\.from\(value, 'utf8'\)/)
+  assert.match(cloudPage, /DRIVE E PEOPLE API/)
+  assert.match(cloudPage, /Lista de arquivos atualizada/)
+})
