@@ -38,8 +38,10 @@ export function WhatsAppPage() {
         <label>Nome do canal<input value={item.name} onChange={(event) => updateChannel(item.id, { name: event.target.value })}/></label>
         <label>Número com DDD<input value={item.phoneNumber} onChange={(event) => updateChannel(item.id, { phoneNumber: event.target.value })} placeholder="(00) 00000-0000"/></label>
         <label>Finalidade<input value={item.purpose} onChange={(event) => updateChannel(item.id, { purpose: event.target.value })}/></label>
+        <label>WhatsApp Business Account ID<input value={item.businessAccountId} onChange={(event) => updateChannel(item.id, { businessAccountId: event.target.value.replace(/\\D/g, '') })} placeholder="ID fornecido pela Meta"/></label>
+        <label>Phone Number ID<input value={item.phoneNumberId} onChange={(event) => updateChannel(item.id, { phoneNumberId: event.target.value.replace(/\\D/g, '') })} placeholder="ID do número na Meta"/></label>
         <label><input type="checkbox" checked={item.enabled} onChange={(event) => updateChannel(item.id, { enabled: event.target.checked })}/> Canal ativo</label>
-        <small><Save size={14}/> Configuração local salva automaticamente. Nenhum token é armazenado.</small>
+        <small><Save size={14}/> {item.businessAccountId && item.phoneNumberId ? 'Identificadores da Meta cadastrados. Backend ainda não conectado.' : 'Modo local. Preencha os IDs quando os números forem aprovados pela Meta.'} Nenhum token é armazenado.</small>
       </article>)}
     </section>
 
