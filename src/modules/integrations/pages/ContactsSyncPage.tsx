@@ -4,6 +4,7 @@ import { Button } from '../../../components/Button'
 import { useCloudProvidersStore } from '../../../lib/cloudProvidersStore'
 import { useCrmStore } from '../../../lib/crmStore'
 import { buildContactSyncPlan, collectLocalContacts, contactRecordsDiffer, loadContactBindings, mergeContactBindings, saveContactBindings, type GoogleContact } from '../../../lib/googleContactsSync'
+import { createVCard, newVCardContacts, parseVCardContacts, type VCardContact } from '../../../lib/vCardContacts'
 
 export function ContactsSyncPage() {
   const { providers, connectGoogle } = useCloudProvidersStore()
@@ -13,6 +14,7 @@ export function ContactsSyncPage() {
   const updateClient = useCrmStore((state) => state.updateClient)
   const updateLead = useCrmStore((state) => state.updateLead)
   const [googleContacts, setGoogleContacts] = useState<GoogleContact[]>([])
+  const [phoneContacts, setPhoneContacts] = useState<VCardContact[]>([])
   const [bindings, setBindings] = useState(loadContactBindings)
   const [running, setRunning] = useState(false)
   const [message, setMessage] = useState('')
@@ -22,6 +24,7 @@ export function ContactsSyncPage() {
   const localContacts = useMemo(() => collectLocalContacts(clients, leads), [clients, leads])
   const plan = useMemo(() => buildContactSyncPlan(googleContacts, localContacts, bindings), [googleContacts, localContacts, bindings])
   const conflicts = useMemo(() => plan.matched.filter(({ google, local }) => contactRecordsDiffer(google, local)), [plan.matched])
+  const newPhoneContacts = useMemo(() => newVCardContacts(phoneContacts, localContacts), [phoneContacts, localContacts])
 
   useEffect(() => {
     const next = mergeContactBindings(bindings, plan.matched)
@@ -41,6 +44,46 @@ export function ContactsSyncPage() {
     } finally {
       setRunning(false)
     }
+  }
+
+  async function loadPhoneContacts(file?: File) {
+    if (!file) throw new Error('Selecione um arquivo vCard (.vcf).')
+    if (file.size > 10 * 1024 * 1024) throw new Error('O arquivo vCard deve ter no máximo 10 MB.')
+    const parsed = parseVCardContacts(await file.text())
+    if (!parsed.length) throw new Error('Nenhum contato válido foi encontrado no arquivo.')
+    setPhoneContacts(parsed)
+    return `${parsed.length} contato(s) lido(s) da agenda. ${newVCardContacts(parsed, localContacts).length} novo(s).`
+  }
+
+  async function importPhoneContacts() {
+    newPhoneContacts.forEach((contact) => addLead({
+      name: contact.name,
+      company: contact.company,
+      email: contact.email,
+      phone: contact.phone,
+      whatsapp: contact.phone,
+      source: 'Agenda do celular (vCard)',
+      stage: 'new',
+      value: 0,
+      owner: '',
+      nextAction: 'Revisar contato importado',
+      consentStatus: 'unknown'
+    }))
+    const count = newPhoneContacts.length
+    setPhoneContacts([])
+    return `${count} contato(s) importado(s) como Lead. O consentimento permanece não confirmado.`
+  }
+
+  async function exportPhoneContacts() {
+    if (!localContacts.length) throw new Error('Não existem contatos locais para exportar.')
+    const blob = new Blob([createVCard(localContacts)], { type: 'text/vcard;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'AgendaMarketingV-contatos.vcf'
+    link.click()
+    URL.revokeObjectURL(url)
+    return `${localContacts.length} contato(s) exportado(s) para vCard.`
   }
 
   async function loadGoogleContacts() {
@@ -125,10 +168,27 @@ export function ContactsSyncPage() {
 
     <section className="metrics-grid">
       <article className="metric-card"><span>Google</span><strong>{googleContacts.length}</strong><small>contatos encontrados</small></article>
+      <article className="metric-card"><span>Celular</span><strong>{phoneContacts.length}</strong><small>{newPhoneContacts.length} novo(s) no vCard</small></article>
       <article className="metric-card"><span>Novos no Google</span><strong>{plan.googleOnly.length}</strong><small>prontos para importar</small></article>
       <article className="metric-card"><span>Novos no sistema</span><strong>{plan.localOnly.length}</strong><small>prontos para exportar</small></article>
       <article className="metric-card"><span>Conflitos</span><strong>{conflicts.length}</strong><small>{bindings.length} vínculo(s) persistente(s)</small></article>
     </section>
+
+    <article className="panel-card">
+      <div className="panel-header">
+        <div><h2>Agenda do celular</h2><p>Importe ou exporte arquivos vCard. Nada é excluído e contatos repetidos são ignorados.</p></div>
+      </div>
+      <div className="cloud-provider-actions">
+        <label>Arquivo .vcf<input type="file" accept=".vcf,text/vcard,text/x-vcard" disabled={running} onChange={(event) => run(() => loadPhoneContacts(event.target.files?.[0]))}/></label>
+        <Button onClick={() => run(importPhoneContacts)} disabled={running || !newPhoneContacts.length}><Download size={17}/> Importar novos do celular</Button>
+        <Button variant="secondary" onClick={() => run(exportPhoneContacts)} disabled={running || !localContacts.length}><Upload size={17}/> Exportar base para o celular</Button>
+      </div>
+      {phoneContacts.length > 0 && <div className="integration-grid">
+        {newPhoneContacts.slice(0, 20).map((contact, index) => <article className="panel-card integration-card" key={`${contact.email}-${contact.phone}-${index}`}>
+          <span className="eyebrow">NOVO NO CELULAR</span><h2>{contact.name}</h2><p>{contact.company || 'Contato da agenda'}</p><small>{contact.email || contact.phone}</small>
+        </article>)}
+      </div>}
+    </article>
 
     <article className="panel-card">
       <div className="panel-header">

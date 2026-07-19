@@ -4,6 +4,7 @@ import { MemoryStorageProvider } from '../src/data/providers/MemoryStorageProvid
 import { CrmRepository, CRM_STORAGE_KEY, type CrmData } from '../src/data/repositories/CrmRepository.ts'
 import { CURRENT_DATA_SCHEMA_VERSION, DATA_SCHEMA_KEY, migrateLegacyData } from '../src/data/migrations/migrateLegacyData.ts'
 import { buildContactSyncPlan, type ContactBinding, type GoogleContact, type LocalContact } from '../src/lib/googleContactsSync.ts'
+import { createVCard, newVCardContacts, parseVCardContacts } from '../src/lib/vCardContacts.ts'
 
 const empty: CrmData = { clients: [], leads: [], activities: [], proposals: [] }
 
@@ -70,4 +71,26 @@ test('vínculo persistente reconhece contato após telefone e e-mail mudarem', (
   assert.equal(plan.matched.length, 1)
   assert.equal(plan.googleOnly.length, 0)
   assert.equal(plan.localOnly.length, 0)
+})
+
+
+test('vCard importa contatos, remove duplicados e preserva caracteres escapados', () => {
+  const source = [
+    'BEGIN:VCARD', 'VERSION:3.0', 'FN:Ana\\, Silva', 'TEL;TYPE=CELL:+55 (31) 99999-0000', 'EMAIL:ANA@EXEMPLO.COM', 'ORG:Empresa\\; Sul', 'END:VCARD',
+    'BEGIN:VCARD', 'VERSION:3.0', 'FN:Contato duplicado', 'TEL:31999990000', 'END:VCARD'
+  ].join('\r\n')
+  const contacts = parseVCardContacts(source)
+  assert.equal(contacts.length, 1)
+  assert.equal(contacts[0]?.name, 'Ana, Silva')
+  assert.equal(contacts[0]?.company, 'Empresa')
+})
+
+test('vCard compara agenda do celular com contatos locais e exporta arquivo válido', () => {
+  const imported = parseVCardContacts('BEGIN:VCARD\nVERSION:3.0\nFN:Novo Contato\nTEL:31988887777\nEND:VCARD')
+  const local: LocalContact[] = [{ type: 'lead', id: 'l1', name: 'Existente', email: '', phone: '31911112222', company: '' }]
+  assert.equal(newVCardContacts(imported, local).length, 1)
+  const exported = createVCard([...local, { type: 'lead', id: 'l2', name: 'Nome, Teste', email: 'teste@exemplo.com', phone: '', company: '' }])
+  assert.match(exported, /BEGIN:VCARD/)
+  assert.match(exported, /FN:Nome\\, Teste/)
+  assert.match(exported, /EMAIL;TYPE=INTERNET:teste@exemplo.com/)
 })
