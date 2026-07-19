@@ -21,8 +21,11 @@ integration('ativação concorrente respeita o limite transacional de dispositiv
       client.rpc('activate_license', { p_key: key, p_device_id: `device-a-${crypto.randomUUID()}`, p_device_name: 'A', p_organization_id: '' }),
       client.rpc('activate_license', { p_key: key, p_device_id: `device-b-${crypto.randomUUID()}`, p_device_name: 'B', p_organization_id: '' })
     ])
-    assert.equal(attempts.filter((result) => !result.error).length, 1)
-    assert.equal(attempts.filter((result) => result.error?.message.includes('DEVICE_LIMIT')).length, 1)
+    const diagnostics = attempts.map((result) => result.error
+      ? { code: result.error.code, message: result.error.message, details: result.error.details, hint: result.error.hint }
+      : { ok: true })
+    assert.equal(attempts.filter((result) => !result.error).length, 1, JSON.stringify(diagnostics))
+    assert.equal(attempts.filter((result) => result.error?.message.includes('DEVICE_LIMIT')).length, 1, JSON.stringify(diagnostics))
 
     const { count, error } = await client
       .from('license_server_activations')
