@@ -7,6 +7,7 @@ export interface GoogleContact {
   email: string
   phone: string
   company: string
+  sources: Array<Record<string, unknown>>
 }
 
 export interface LocalContact {
@@ -73,4 +74,11 @@ export function buildContactSyncPlan(googleContacts: GoogleContact[], localConta
 
   const localOnly = localContacts.filter((local) => !matchedLocalIds.has(`${local.type}:${local.id}`))
   return { googleOnly, localOnly, matched }
+}
+
+export function contactRecordsDiffer(google: GoogleContact, local: LocalContact): boolean {
+  return google.name.trim() !== local.name.trim()
+    || normalizeEmail(google.email) !== normalizeEmail(local.email)
+    || normalizePhone(google.phone) !== normalizePhone(local.phone)
+    || google.company.trim() !== local.company.trim()
 }
