@@ -191,3 +191,19 @@ test('central de sincronização não simula transmissão de dados', () => {
   assert.doesNotMatch(page, /useCloudSyncStore|setEndpoint|enqueue\(|process\(/)
   assert.doesNotMatch(page, /api\.seudominio\.com/)
 })
+
+
+test('deploy Supabase é manual, protegido e mantém JWT no envio', () => {
+  const workflow = read('.github/workflows/deploy-supabase.yml')
+  const config = read('supabase/config.toml')
+  assert.match(workflow, /workflow_dispatch:/)
+  assert.match(workflow, /inputs\.confirmation == 'DEPLOY'/)
+  assert.match(workflow, /environment: \$\{\{ inputs\.environment \}\}/)
+  assert.match(workflow, /supabase db push --linked/)
+  assert.match(workflow, /functions deploy whatsapp-send/)
+  assert.match(workflow, /functions deploy whatsapp-webhook/)
+  assert.doesNotMatch(workflow, /push:\s*\n\s*branches:/)
+  assert.doesNotMatch(workflow, /WHATSAPP_ACCESS_TOKEN_CHANNEL_1:\s*[^$\s]/)
+  assert.match(config, /\[functions\.whatsapp-send\][\s\S]*verify_jwt = true/)
+  assert.match(config, /\[functions\.whatsapp-webhook\][\s\S]*verify_jwt = false/)
+})
