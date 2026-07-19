@@ -79,3 +79,12 @@ test('WhatsApp contacts validate availability before recording activity', () => 
   assert.match(campaignsPage, /canal de WhatsApp desta campanha está desativado/)
   assert.match(whatsappPage, /canal selecionado está desativado/)
 })
+
+
+test('autenticação não distribui credenciais padrão', () => {
+  const authStore = read('src/lib/authStore.ts')
+  const authPage = read('src/modules/auth/pages/AuthPage.tsx')
+  assert.doesNotMatch(authStore, /password:\s*['"]123456['"]/)
+  assert.doesNotMatch(authStore, /users\.unshift\(owner\)/)
+  assert.doesNotMatch(authPage, /useState\(['"]123456['"]\)/)
+})
