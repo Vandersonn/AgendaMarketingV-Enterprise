@@ -37,21 +37,19 @@ function tokenFilePath() {
 }
 
 function saveGoogleToken(token) {
-  const value = JSON.stringify(token)
-  if (safeStorage.isEncryptionAvailable()) {
-    fs.writeFileSync(tokenFilePath(), safeStorage.encryptString(value))
-  } else {
-    fs.writeFileSync(tokenFilePath(), Buffer.from(value, 'utf8'))
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Armazenamento seguro indisponível. O token Google não será salvo.')
   }
+  fs.writeFileSync(tokenFilePath(), safeStorage.encryptString(JSON.stringify(token)))
 }
 
 function loadGoogleToken() {
+  if (!safeStorage.isEncryptionAvailable()) {
+    try { fs.unlinkSync(tokenFilePath()) } catch {}
+    return null
+  }
   try {
-    const buffer = fs.readFileSync(tokenFilePath())
-    const value = safeStorage.isEncryptionAvailable()
-      ? safeStorage.decryptString(buffer)
-      : buffer.toString('utf8')
-    return JSON.parse(value)
+    return JSON.parse(safeStorage.decryptString(fs.readFileSync(tokenFilePath())))
   } catch {
     return null
   }
@@ -248,10 +246,15 @@ ipcMain.handle('google:connect', async (_event, clientId) => {
   const state = crypto.randomBytes(24).toString('hex')
 
   return await new Promise((resolve, reject) => {
+    let timeoutId
     const server = http.createServer(async (request, response) => {
       try {
         const requestUrl = new URL(request.url, 'http://127.0.0.1')
-        if (requestUrl.pathname !== '/oauth2callback') return
+        if (requestUrl.pathname !== '/oauth2callback') {
+          response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
+          response.end('Rota OAuth não encontrada.')
+          return
+        }
         if (requestUrl.searchParams.get('state') !== state) throw new Error('Estado OAuth inválido.')
         const code = requestUrl.searchParams.get('code')
         const error = requestUrl.searchParams.get('error')
@@ -277,12 +280,14 @@ ipcMain.handle('google:connect', async (_event, clientId) => {
         saveGoogleToken(token)
 
         response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-        response.end('<h1>Google Drive conectado</h1><p>Você pode fechar esta janela e voltar ao AgendaMarketingV.</p>')
+        response.end('<h1>Google conectado</h1><p>Você pode fechar esta janela e voltar ao AgendaMarketingV.</p>')
+        clearTimeout(timeoutId)
         server.close()
         resolve({ ok: true })
       } catch (error) {
         response.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' })
         response.end(error.message)
+        clearTimeout(timeoutId)
         server.close()
         reject(error)
       }
@@ -304,10 +309,13 @@ ipcMain.handle('google:connect', async (_event, clientId) => {
       shell.openExternal(authUrl.toString())
     })
 
-    server.on('error', reject)
-    setTimeout(() => {
+    server.on('error', (error) => {
+      clearTimeout(timeoutId)
+      reject(error)
+    })
+    timeoutId = setTimeout(() => {
       try { server.close() } catch {}
-      reject(new Error('Tempo de conexão com Google Drive esgotado.'))
+      reject(new Error('Tempo de conexão com Google esgotado.'))
     }, 180000)
   })
 })
