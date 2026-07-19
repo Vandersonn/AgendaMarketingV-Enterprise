@@ -3,13 +3,15 @@ import { AddressBook, Download, RefreshCw, Upload } from 'lucide-react'
 import { Button } from '../../../components/Button'
 import { useCloudProvidersStore } from '../../../lib/cloudProvidersStore'
 import { useCrmStore } from '../../../lib/crmStore'
-import { buildContactSyncPlan, collectLocalContacts, type GoogleContact } from '../../../lib/googleContactsSync'
+import { buildContactSyncPlan, collectLocalContacts, contactRecordsDiffer, type GoogleContact } from '../../../lib/googleContactsSync'
 
 export function ContactsSyncPage() {
   const { providers, connectGoogle } = useCloudProvidersStore()
   const clients = useCrmStore((state) => state.clients)
   const leads = useCrmStore((state) => state.leads)
   const addLead = useCrmStore((state) => state.addLead)
+  const updateClient = useCrmStore((state) => state.updateClient)
+  const updateLead = useCrmStore((state) => state.updateLead)
   const [googleContacts, setGoogleContacts] = useState<GoogleContact[]>([])
   const [running, setRunning] = useState(false)
   const [message, setMessage] = useState('')
@@ -18,6 +20,7 @@ export function ContactsSyncPage() {
   const clientId = providers['google-drive'].googleClientId
   const localContacts = useMemo(() => collectLocalContacts(clients, leads), [clients, leads])
   const plan = useMemo(() => buildContactSyncPlan(googleContacts, localContacts), [googleContacts, localContacts])
+  const conflicts = useMemo(() => plan.matched.filter(({ google, local }) => contactRecordsDiffer(google, local)), [plan.matched])
 
   async function run(action: () => Promise<string>) {
     setRunning(true)
@@ -76,6 +79,29 @@ export function ContactsSyncPage() {
     return `${exported} contato(s) exportado(s) para o Google.`
   }
 
+
+  async function useGoogleForConflicts() {
+    for (const { google, local } of conflicts) {
+      if (local.type === 'client') {
+        const current = clients.find((item) => item.id === local.id)
+        if (current) updateClient({ ...current, name: google.name || current.name, company: google.company || current.company, email: google.email || current.email, phone: google.phone || current.phone })
+      } else {
+        const current = leads.find((item) => item.id === local.id)
+        if (current) updateLead({ ...current, name: google.name || current.name, company: google.company || current.company, email: google.email || current.email, phone: google.phone || current.phone, whatsapp: google.phone || current.whatsapp })
+      }
+    }
+    return `${conflicts.length} contato(s) atualizados no sistema com os dados do Google.`
+  }
+
+  async function useSystemForConflicts() {
+    if (!window.agendaDesktop) throw new Error('A atualização está disponível no aplicativo desktop.')
+    for (const { google, local } of conflicts) {
+      await window.agendaDesktop.updateGoogleContact({ clientId, contact: { ...local, resourceName: google.resourceName, etag: google.etag, sources: google.sources } })
+    }
+    await loadGoogleContacts()
+    return `${conflicts.length} contato(s) atualizados no Google com os dados do sistema.`
+  }
+
   return <div className="page">
     <header className="page-header">
       <div>
@@ -93,7 +119,7 @@ export function ContactsSyncPage() {
       <article className="metric-card"><span>Google</span><strong>{googleContacts.length}</strong><small>contatos encontrados</small></article>
       <article className="metric-card"><span>Novos no Google</span><strong>{plan.googleOnly.length}</strong><small>prontos para importar</small></article>
       <article className="metric-card"><span>Novos no sistema</span><strong>{plan.localOnly.length}</strong><small>prontos para exportar</small></article>
-      <article className="metric-card"><span>Correspondências</span><strong>{plan.matched.length}</strong><small>telefone ou e-mail iguais</small></article>
+      <article className="metric-card"><span>Conflitos</span><strong>{conflicts.length}</strong><small>exigem escolha manual</small></article>
     </section>
 
     <article className="panel-card">
@@ -104,6 +130,8 @@ export function ContactsSyncPage() {
       <div className="cloud-provider-actions">
         <Button onClick={() => run(importGoogleOnly)} disabled={running || !plan.googleOnly.length}><Download size={17}/> Importar novos como Leads</Button>
         <Button variant="secondary" onClick={() => run(exportLocalOnly)} disabled={running || !plan.localOnly.length}><Upload size={17}/> Exportar novos para Google</Button>
+        <Button onClick={() => run(useGoogleForConflicts)} disabled={running || !conflicts.length}><Download size={17}/> Usar Google nos conflitos</Button>
+        <Button variant="secondary" onClick={() => run(useSystemForConflicts)} disabled={running || !conflicts.length}><Upload size={17}/> Usar sistema nos conflitos</Button>
       </div>
     </article>
 
