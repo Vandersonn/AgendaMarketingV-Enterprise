@@ -10,8 +10,7 @@ create table if not exists public.whatsapp_business_channels (
   enabled boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (organization_id, channel_key),
-  unique (organization_id, phone_number_id)
+  unique (organization_id, channel_key)
 );
 
 create table if not exists public.contact_communication_consents (
@@ -43,6 +42,7 @@ create table if not exists public.whatsapp_message_deliveries (
 );
 
 create index if not exists idx_whatsapp_channels_org on public.whatsapp_business_channels(organization_id);
+create unique index if not exists idx_whatsapp_channels_phone_number_id on public.whatsapp_business_channels(organization_id, phone_number_id) where phone_number_id <> '';
 create index if not exists idx_contact_consents_org_contact on public.contact_communication_consents(organization_id, contact_key);
 create index if not exists idx_whatsapp_deliveries_org_created on public.whatsapp_message_deliveries(organization_id, created_at desc);
 create index if not exists idx_whatsapp_deliveries_provider on public.whatsapp_message_deliveries(provider_message_id);
