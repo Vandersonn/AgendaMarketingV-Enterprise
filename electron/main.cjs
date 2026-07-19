@@ -6,6 +6,7 @@ const crypto = require('crypto')
 
 const allowedExternalProtocols = new Set(['https:', 'http:', 'mailto:'])
 const authorizedCloudFiles = new Set()
+const authorizedCloudFolders = new Set()
 
 function normalizeExternalUrl(value) {
   const parsed = new URL(String(value))
@@ -13,6 +14,18 @@ function normalizeExternalUrl(value) {
     throw new Error('Protocolo externo não permitido.')
   }
   return parsed.toString()
+}
+
+function authorizeCloudFolder(folderPath) {
+  const resolved = path.resolve(String(folderPath || ''))
+  authorizedCloudFolders.add(resolved)
+  return resolved
+}
+
+function assertAuthorizedCloudFolder(folderPath) {
+  const resolved = path.resolve(String(folderPath || ''))
+  if (!authorizedCloudFolders.has(resolved)) throw new Error('Pasta não autorizada. Selecione-a novamente.')
+  return resolved
 }
 
 function authorizeCloudFile(filePath) {
@@ -201,12 +214,13 @@ ipcMain.handle('cloud:chooseFolder', async () => {
     properties: ['openDirectory', 'createDirectory']
   })
   if (result.canceled || !result.filePaths[0]) return { ok: false }
-  return { ok: true, folderPath: result.filePaths[0] }
+  const folderPath = authorizeCloudFolder(result.filePaths[0])
+  return { ok: true, folderPath }
 })
 
 ipcMain.handle('cloud:writeFile', async (_event, payload) => {
-  const folderPath = payload?.folderPath
-  if (!folderPath || !fs.existsSync(folderPath)) throw new Error('Pasta de sincronização não encontrada.')
+  const folderPath = assertAuthorizedCloudFolder(payload?.folderPath)
+  if (!fs.existsSync(folderPath)) throw new Error('Pasta de sincronização não encontrada.')
   const targetDir = path.join(folderPath, 'AgendaMarketingV')
   fs.mkdirSync(targetDir, { recursive: true })
   const filename = safeFileName(payload?.filename || `backup-${Date.now()}.json`)
@@ -217,8 +231,9 @@ ipcMain.handle('cloud:writeFile', async (_event, payload) => {
 })
 
 ipcMain.handle('cloud:listFiles', async (_event, folderPath) => {
-  if (!folderPath || !fs.existsSync(folderPath)) return { ok: false, files: [] }
-  const targetDir = path.join(folderPath, 'AgendaMarketingV')
+  const authorizedFolder = assertAuthorizedCloudFolder(folderPath)
+  if (!fs.existsSync(authorizedFolder)) return { ok: false, files: [] }
+  const targetDir = path.join(authorizedFolder, 'AgendaMarketingV')
   if (!fs.existsSync(targetDir)) return { ok: true, files: [] }
   const files = fs.readdirSync(targetDir)
     .filter((name) => name.endsWith('.json'))
