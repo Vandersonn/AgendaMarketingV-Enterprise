@@ -13,5 +13,6 @@ contextBridge.exposeInMainWorld('agendaDesktop', {
   uploadGoogleBackup: (payload) => ipcRenderer.invoke('google:uploadBackup', payload),
   listGoogleBackups: (clientId) => ipcRenderer.invoke('google:listBackups', clientId),
   listGoogleContacts: (clientId) => ipcRenderer.invoke('google:contacts:list', clientId),
-  createGoogleContact: (payload) => ipcRenderer.invoke('google:contacts:create', payload)
+  createGoogleContact: (payload) => ipcRenderer.invoke('google:contacts:create', payload),
+  updateGoogleContact: (payload) => ipcRenderer.invoke('google:contacts:update', payload)
 })
