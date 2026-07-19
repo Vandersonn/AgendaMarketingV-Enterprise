@@ -59,10 +59,9 @@ export function CloudConnectPage() {
         <h1>Proton Drive e Google Drive</h1>
         <p>Backups criptografáveis, históricos e sincronização por provedor.</p>
       </div>
-      <Button variant="secondary" onClick={() => Promise.all([
-        listFiles('proton-drive'),
-        listFiles('google-drive')
-      ])}><RefreshCw size={17}/> Atualizar arquivos</Button>
+      <Button variant="secondary" disabled={running} onClick={() => run(async () => {
+        await Promise.all([listFiles('proton-drive'), listFiles('google-drive')])
+      }, 'Lista de arquivos atualizada.')}><RefreshCw size={17}/> Atualizar arquivos</Button>
     </header>
 
     {message && <div className="form-message success">{message}</div>}
@@ -113,7 +112,7 @@ export function CloudConnectPage() {
         <div className="cloud-provider-head">
           <div className="cloud-provider-icon google"><Cloud/></div>
           <div>
-            <span>OAUTH 2.0 + DRIVE API</span>
+            <span>OAUTH 2.0 + DRIVE E PEOPLE API</span>
             <h2>Google Drive</h2>
             <p>Conexão pelo navegador usando autorização OAuth 2.0 com PKCE.</p>
           </div>
@@ -151,7 +150,7 @@ export function CloudConnectPage() {
           }
         </div>
 
-        <small>O aplicativo solicita somente o escopo `drive.file`, limitado aos arquivos criados pelo AgendaMarketingV.</small>
+        <small>O aplicativo solicita `drive.file` para seus próprios backups e `contacts` para a sincronização de contatos autorizada.</small>
         {providers['google-drive'].lastSyncAt && <div className="last-sync">Última sincronização: {new Date(providers['google-drive'].lastSyncAt).toLocaleString('pt-BR')}</div>}
       </article>
     </section>
