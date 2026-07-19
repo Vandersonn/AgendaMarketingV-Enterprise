@@ -7,6 +7,7 @@ const CloudSyncPage = lazy(() => import('./pages/CloudSyncPage').then((module) =
 const CloudConnectPage = lazy(() => import('./pages/CloudConnectPage').then((module) => ({ default: module.CloudConnectPage })))
 const AppCenterPage = lazy(() => import('./pages/AppCenterPage').then((module) => ({ default: module.AppCenterPage })))
 const MarketplacePage = lazy(() => import('./pages/MarketplacePage').then((module) => ({ default: module.MarketplacePage })))
+const ContactsSyncPage = lazy(() => import('./pages/ContactsSyncPage').then((module) => ({ default: module.ContactsSyncPage })))
 const PluginManagerPage = lazy(() => import('./pages/PluginManagerPage').then((module) => ({ default: module.PluginManagerPage })))
 
 export const routes: ModuleRoute[] = [
@@ -15,6 +16,7 @@ export const routes: ModuleRoute[] = [
   { path: '/cloud-sync', component: CloudSyncPage, permission: 'settings.manage' },
   { path: '/cloud-connect', component: CloudConnectPage, permission: 'settings.manage' },
   { path: '/app-center', component: AppCenterPage },
+  { path: '/contacts-sync', component: ContactsSyncPage, permission: 'integrations.manage' },
   { path: '/marketplace', component: MarketplacePage, permission: 'settings.manage' },
   { path: '/plugin-manager', component: PluginManagerPage, permission: 'settings.manage' },
 ]
