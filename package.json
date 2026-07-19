@@ -11,12 +11,13 @@
     "build:web": "tsc -b && vite build",
     "build:win": "npm run build:web && electron-builder --win nsis portable",
     "preview": "vite preview",
-    "quality:check": "npm run test:data && npm run test:forms && npm run test:crm && npm run test:data-layer && tsc -b && vite build",
+    "quality:check": "npm run test:data && npm run test:forms && npm run test:crm && npm run test:data-layer && npm run test:integration && tsc -b && vite build",
     "license-server": "node services/license-server/server.cjs",
     "test:data": "node --experimental-strip-types --test tests/dataValidation.test.ts",
     "test:forms": "node --experimental-strip-types --test tests/formStability.test.ts",
     "test:crm": "node --experimental-strip-types --test tests/crmRefactor.test.ts",
-    "test:data-layer": "node --experimental-strip-types --test tests/dataLayer.test.ts"
+    "test:data-layer": "node --experimental-strip-types --test tests/dataLayer.test.ts",
+    "test:integration": "node --experimental-strip-types --test tests/securityIntegration.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
