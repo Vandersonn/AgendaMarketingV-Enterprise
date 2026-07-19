@@ -6,8 +6,8 @@ import { useAuthStore } from '../../../lib/authStore'
 export function AuthPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [name, setName] = useState('')
-  const [email, setEmail] = useState('produtosecursosnet@gmail.com')
-  const [password, setPassword] = useState('123456')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
   const signIn = useAuthStore((state) => state.signIn)
   const signUp = useAuthStore((state) => state.signUp)

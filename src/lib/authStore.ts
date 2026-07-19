@@ -26,20 +26,8 @@ interface AuthState {
   recoverPassword: (email: string) => Promise<string | null>
 }
 
-const owner: StoredLocalUser = {
-  id: 'owner',
-  email: 'produtosecursosnet@gmail.com',
-  name: 'Vanderson de Castro',
-  password: '123456'
-}
-
 function getLocalUsers(): StoredLocalUser[] {
-  const users = loadLocal<StoredLocalUser[]>('users', [])
-  if (!users.some((item) => item.email.toLowerCase() === owner.email.toLowerCase())) {
-    users.unshift(owner)
-    saveLocal('users', users)
-  }
-  return users
+  return loadLocal<StoredLocalUser[]>('users', [])
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
