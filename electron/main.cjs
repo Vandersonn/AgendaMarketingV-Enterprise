@@ -165,9 +165,12 @@ function createWindow() {
 
   win.webContents.on('will-navigate', (event, url) => {
     try {
-      const currentOrigin = new URL(win.webContents.getURL()).origin
-      const targetOrigin = new URL(url).origin
-      if (targetOrigin === currentOrigin) return
+      const currentUrl = new URL(win.webContents.getURL())
+      const targetUrl = new URL(url)
+      const sameApplication = currentUrl.protocol === 'file:'
+        ? targetUrl.href.startsWith(currentUrl.href.split('#')[0])
+        : targetUrl.origin === currentUrl.origin
+      if (sameApplication) return
       event.preventDefault()
       void shell.openExternal(normalizeExternalUrl(url))
     } catch {
