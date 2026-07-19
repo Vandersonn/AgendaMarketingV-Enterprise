@@ -132,3 +132,20 @@ test('backend do WhatsApp exige organização, consentimento e segredos do servi
   assert.doesNotMatch(migration, /access_token\s+text/)
   assert.doesNotMatch(frontend, /WHATSAPP_ACCESS_TOKEN|accessToken/)
 })
+
+
+test('webhook do WhatsApp valida assinatura e processa eventos idempotentes', () => {
+  const migration = read('supabase/migrations/202607190005_whatsapp_webhook.sql')
+  const webhook = read('supabase/functions/whatsapp-webhook/index.ts')
+  assert.match(migration, /provider_message_id text not null unique/)
+  assert.match(migration, /members read whatsapp inbound messages/)
+  assert.match(webhook, /META_WEBHOOK_VERIFY_TOKEN/)
+  assert.match(webhook, /META_APP_SECRET/)
+  assert.match(webhook, /x-hub-signature-256/)
+  assert.match(webhook, /HMAC/)
+  assert.match(webhook, /constantTimeEqual/)
+  assert.match(webhook, /ignoreDuplicates: true/)
+  assert.match(webhook, /whatsapp_message_deliveries/)
+  assert.match(webhook, /whatsapp_inbound_messages/)
+  assert.ok(webhook.indexOf('constantTimeEqual(supplied, expected)') < webhook.indexOf("JSON.parse(rawBody)"))
+})
