@@ -33,6 +33,7 @@ export function ContactCampaignsPage() {
     const whatsappChannel = whatsappChannels.find((item) => item.id === selected.whatsappChannelId) || whatsappChannels[0]
     const text = selected.message.split('{nome}').join(lead.name).split('{cidade}').join(lead.city || '').split('{empresa}').join(lead.company || '')
     if (selected.channel === 'whatsapp') {
+      if (!whatsappChannel.enabled) { setFeedback({ message: 'O canal de WhatsApp desta campanha está desativado.', tone: 'warning' }); return }
       const phone = (lead.whatsapp || lead.phone).replace(/\D/g, '')
       if (!phone) { setFeedback({ message: 'Este lead não possui WhatsApp ou telefone.', tone: 'warning' }); return }
       window.open(`https://wa.me/55${phone.replace(/^55/, '')}?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer')
