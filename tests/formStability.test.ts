@@ -66,5 +66,7 @@ test('sincronização de contatos usa People API e revisão local', () => {
   assert.match(page, /buildContactSyncPlan/)
   assert.match(page, /useGoogleForConflicts/)
   assert.match(page, /useSystemForConflicts/)
+  assert.match(page, /loadContactBindings/)
+  assert.match(page, /saveContactBindings/)
   assert.doesNotMatch(page, /deleteGoogleContact/)
 })
