@@ -14,6 +14,7 @@ import { useCommercialSlaStore } from '../../../lib/commercialSlaStore'
 import { normalizeText } from '../../../lib/dataValidation'
 import { LeadFormModal } from '../../../features/crm/LeadFormModal'
 import { LeadKanbanBoard, leadStages } from '../../../features/crm/LeadKanbanBoard'
+import { useWhatsAppBusinessStore } from '../../../lib/whatsappBusinessStore'
 import { emptyLeadForm, findDuplicateLead, leadFormFromSubmit, validateLeadForm } from '../../../features/crm/leadFormModel'
 
 function activitiesForLead(leadId: string, activities: ReturnType<typeof useCrmStore.getState>['activities']) {
@@ -30,6 +31,10 @@ export function CrmPage() {
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [communicationLead, setCommunicationLead] = useState<Lead | null>(null)
   const [contactNote, setContactNote] = useState('')
+  const whatsappChannels = useWhatsAppBusinessStore((state) => state.channels)
+  const whatsappAssignments = useWhatsAppBusinessStore((state) => state.assignments)
+  const assignWhatsAppContact = useWhatsAppBusinessStore((state) => state.assignContact)
+  const [whatsappChannelId, setWhatsappChannelId] = useState<'channel-1' | 'channel-2'>('channel-1')
   const [selectedLost, setSelectedLost] = useState<string[]>([])
   const [selectedCampaignLeads, setSelectedCampaignLeads] = useState<string[]>([])
   const [campaignOpen, setCampaignOpen] = useState(false)
@@ -38,7 +43,7 @@ export function CrmPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [discardLeadOpen, setDiscardLeadOpen] = useState(false)
-  const [campaignForm, setCampaignForm] = useState({ name: '', channel: 'whatsapp' as CampaignChannel, message: 'Olá, {nome}! Tudo bem? Gostaria de conversar sobre uma solução para {empresa}.', dailyLimit: 40, intervalMinutes: 15 })
+  const [campaignForm, setCampaignForm] = useState({ name: '', channel: 'whatsapp' as CampaignChannel, whatsappChannelId: 'channel-1' as 'channel-1' | 'channel-2', message: 'Olá, {nome}! Tudo bem? Gostaria de conversar sobre uma solução para {empresa}.', dailyLimit: 40, intervalMinutes: 15 })
   const createCampaign = useContactCampaignStore((state) => state.createCampaign)
   const navigate = useNavigate()
   const slaLimits = useCommercialSlaStore((state) => state.limits)
@@ -65,6 +70,13 @@ export function CrmPage() {
     return { level: 'ok', label: 'Contato liberado', detail: 'Use uma mensagem relevante e respeite eventual pedido de descadastro.' }
   }
 
+  function openLeadCommunication(lead: Lead) {
+    setCommunicationLead(lead)
+    const assigned = whatsappAssignments[`lead:${lead.id}`]
+    const available = whatsappChannels.find((channel) => channel.id === assigned && channel.enabled) || whatsappChannels.find((channel) => channel.enabled) || whatsappChannels[0]
+    setWhatsappChannelId(available.id)
+  }
+
   function updateCommunicationLead(patch: Partial<Lead>) {
     if (!communicationLead) return
     const updated = { ...communicationLead, ...patch }
@@ -74,21 +86,43 @@ export function CrmPage() {
 
   function executeContact(type: 'whatsapp' | 'email' | 'call', registerActivity = true) {
     if (!communicationLead) return
+    const whatsappChannel = whatsappChannels.find((channel) => channel.id === whatsappChannelId) || whatsappChannels[0]
+    const phone = (communicationLead.whatsapp || communicationLead.phone).replace(/\D/g, '')
+
+    if (type === 'whatsapp') {
+      if (!phone) {
+        setStatusMessage({ message: 'Este Lead não possui WhatsApp ou telefone.', tone: 'warning' })
+        return
+      }
+      if (!whatsappChannel.enabled) {
+        setStatusMessage({ message: 'O canal de WhatsApp selecionado está desativado.', tone: 'warning' })
+        return
+      }
+      assignWhatsAppContact(`lead:${communicationLead.id}`, whatsappChannel.id)
+    }
+    if (type === 'email' && !communicationLead.email) {
+      setStatusMessage({ message: 'Este Lead não possui e-mail.', tone: 'warning' })
+      return
+    }
+    if (type === 'call' && !communicationLead.phone) {
+      setStatusMessage({ message: 'Este Lead não possui telefone.', tone: 'warning' })
+      return
+    }
+
     if (registerActivity) {
       const now = new Date().toISOString()
       addActivity({
         leadId: communicationLead.id,
         type,
-        title: type === 'whatsapp' ? 'Contato pelo WhatsApp' : type === 'email' ? 'Contato por e-mail' : 'Ligação realizada',
-        description: contactNote || 'Contato iniciado diretamente pelo Kanban.',
+        title: type === 'whatsapp' ? `Contato pelo WhatsApp • ${whatsappChannel.name}` : type === 'email' ? 'Contato por e-mail' : 'Ligação realizada',
+        description: type === 'whatsapp' ? `${contactNote || 'Contato iniciado diretamente pelo Kanban.'} Canal: ${whatsappChannel.name} (${whatsappChannel.phoneNumber || 'número não configurado'}).` : contactNote || 'Contato iniciado diretamente pelo Kanban.',
         date: now
       })
       updateCommunicationLead({ lastContactAt: now, contactCount: (communicationLead.contactCount || 0) + 1 })
     }
-    const phone = (communicationLead.whatsapp || communicationLead.phone).replace(/\D/g, '')
-    if (type === 'whatsapp' && phone) window.open(`https://wa.me/55${phone.replace(/^55/, '')}`, '_blank', 'noopener,noreferrer')
-    if (type === 'email' && communicationLead.email) window.location.href = `mailto:${communicationLead.email}`
-    if (type === 'call' && communicationLead.phone) window.location.href = `tel:${communicationLead.phone.replace(/\D/g, '')}`
+    if (type === 'whatsapp') window.open(`https://wa.me/55${phone.replace(/^55/, '')}`, '_blank', 'noopener,noreferrer')
+    if (type === 'email') window.location.href = `mailto:${communicationLead.email}`
+    if (type === 'call') window.location.href = `tel:${communicationLead.phone.replace(/\D/g, '')}`
     setContactNote('')
   }
 
@@ -216,10 +250,14 @@ export function CrmPage() {
   function saveCampaign(event: React.FormEvent) {
     event.preventDefault()
     if (!selectedCampaignLeads.length) return
+    if (campaignForm.channel === 'whatsapp' && !whatsappChannels.some((channel) => channel.id === campaignForm.whatsappChannelId && channel.enabled)) {
+      setStatusMessage({ message: 'Ative um canal de WhatsApp antes de criar a campanha.', tone: 'warning' })
+      return
+    }
     createCampaign({ ...campaignForm, leadIds: selectedCampaignLeads })
     setCampaignOpen(false)
     setSelectedCampaignLeads([])
-    setCampaignForm({ name: '', channel: 'whatsapp', message: 'Olá, {nome}! Tudo bem? Gostaria de conversar sobre uma solução para {empresa}.', dailyLimit: 40, intervalMinutes: 15 })
+    setCampaignForm({ name: '', channel: 'whatsapp', whatsappChannelId: 'channel-1', message: 'Olá, {nome}! Tudo bem? Gostaria de conversar sobre uma solução para {empresa}.', dailyLimit: 40, intervalMinutes: 15 })
     navigate('/contact-campaigns')
   }
 
@@ -293,7 +331,7 @@ export function CrmPage() {
         slaWarningPercent={slaWarningPercent}
         onDropStage={drop}
         onDragStart={setDraggedId}
-        onOpenLead={setCommunicationLead}
+        onOpenLead={openLeadCommunication}
         onToggleLost={toggleLost}
         onSetSelectedLost={setSelectedLost}
         onDeleteSelectedLost={deleteSelectedLost}
@@ -308,6 +346,7 @@ export function CrmPage() {
           <div className="form-grid">
             <label>Nome da campanha<input required value={campaignForm.name} onChange={(event) => setCampaignForm({ ...campaignForm, name: event.target.value })} placeholder="Ex.: Retorno de propostas" /></label>
             <label>Canal<select value={campaignForm.channel} onChange={(event) => setCampaignForm({ ...campaignForm, channel: event.target.value as CampaignChannel })}><option value="whatsapp">WhatsApp</option><option value="email">E-mail</option><option value="call">Ligação</option></select></label>
+            {campaignForm.channel === 'whatsapp' && <label>Número do WhatsApp<select value={campaignForm.whatsappChannelId} onChange={(event) => setCampaignForm({ ...campaignForm, whatsappChannelId: event.target.value as 'channel-1' | 'channel-2' })}>{whatsappChannels.filter((item) => item.enabled).map((item) => <option key={item.id} value={item.id}>{item.name} — {item.phoneNumber || 'configurar número'}</option>)}</select></label>}
             <label>Limite diário<input type="number" min="1" max="500" value={campaignForm.dailyLimit} onChange={(event) => setCampaignForm({ ...campaignForm, dailyLimit: Number(event.target.value) })} /></label>
             <label>Intervalo recomendado (min)<input type="number" min="1" value={campaignForm.intervalMinutes} onChange={(event) => setCampaignForm({ ...campaignForm, intervalMinutes: Number(event.target.value) })} /></label>
           </div>
@@ -342,6 +381,12 @@ export function CrmPage() {
               <label>Origem do consentimento<input value={communicationLead.consentSource || ''} onChange={(event) => updateCommunicationLead({ consentSource: event.target.value })} placeholder="Formulário, contrato, evento..." /></label>
               <label className="suppression-check"><input type="checkbox" checked={Boolean(communicationLead.doNotContact)} onChange={(event) => updateCommunicationLead({ doNotContact: event.target.checked, consentStatus: event.target.checked ? 'revoked' : communicationLead.consentStatus })} /> Não entrar em contato</label>
             </div>
+
+            <label>Canal do WhatsApp
+              <select value={whatsappChannelId} onChange={(event) => { const id = event.target.value as 'channel-1' | 'channel-2'; setWhatsappChannelId(id); assignWhatsAppContact(`lead:${communicationLead.id}`, id) }}>
+                {whatsappChannels.filter((channel) => channel.enabled).map((channel) => <option key={channel.id} value={channel.id}>{channel.name} — {channel.phoneNumber || 'configurar número'}</option>)}
+              </select>
+            </label>
 
             <label className="contact-note">Observação do contato<textarea value={contactNote} onChange={(event) => setContactNote(event.target.value)} placeholder="Contexto, assunto ou resultado da conversa" /></label>
 

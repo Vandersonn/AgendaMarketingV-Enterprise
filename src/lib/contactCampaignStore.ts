@@ -8,6 +8,7 @@ export interface ContactCampaign {
   id: string
   name: string
   channel: CampaignChannel
+  whatsappChannelId?: 'channel-1' | 'channel-2'
   leadIds: string[]
   message: string
   dailyLimit: number

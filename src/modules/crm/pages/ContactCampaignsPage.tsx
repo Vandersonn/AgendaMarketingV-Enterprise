@@ -5,6 +5,7 @@ import { ConfirmDialog } from '../../../components/ConfirmDialog'
 import { StatusMessage } from '../../../components/StatusMessage'
 import { useContactCampaignStore } from '../../../lib/contactCampaignStore'
 import { useCrmStore } from '../../../lib/crmStore'
+import { useWhatsAppBusinessStore } from '../../../lib/whatsappBusinessStore'
 
 export function ContactCampaignsPage() {
   const campaigns = useContactCampaignStore((state) => state.campaigns)
@@ -12,6 +13,7 @@ export function ContactCampaignsPage() {
   const removeCampaign = useContactCampaignStore((state) => state.removeCampaign)
   const markContacted = useContactCampaignStore((state) => state.markContacted)
   const leads = useCrmStore((state) => state.leads)
+  const whatsappChannels = useWhatsAppBusinessStore((state) => state.channels)
   const addActivity = useCrmStore((state) => state.addActivity)
   const updateLead = useCrmStore((state) => state.updateLead)
   const [selectedId, setSelectedId] = useState(campaigns[0]?.id || '')
@@ -28,8 +30,10 @@ export function ContactCampaignsPage() {
     const lead = pending[0]
     if (!lead) return
     const now = new Date().toISOString()
+    const whatsappChannel = whatsappChannels.find((item) => item.id === selected.whatsappChannelId) || whatsappChannels[0]
     const text = selected.message.split('{nome}').join(lead.name).split('{cidade}').join(lead.city || '').split('{empresa}').join(lead.company || '')
     if (selected.channel === 'whatsapp') {
+      if (!whatsappChannel.enabled) { setFeedback({ message: 'O canal de WhatsApp desta campanha está desativado.', tone: 'warning' }); return }
       const phone = (lead.whatsapp || lead.phone).replace(/\D/g, '')
       if (!phone) { setFeedback({ message: 'Este lead não possui WhatsApp ou telefone.', tone: 'warning' }); return }
       window.open(`https://wa.me/55${phone.replace(/^55/, '')}?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer')
@@ -40,7 +44,7 @@ export function ContactCampaignsPage() {
       if (!lead.phone) { setFeedback({ message: 'Este lead não possui telefone.', tone: 'warning' }); return }
       window.location.href = `tel:${lead.phone.replace(/\D/g, '')}`
     }
-    addActivity({ leadId: lead.id, type: selected.channel, title: `Contato da campanha ${selected.name}`, description: text, date: now })
+    addActivity({ leadId: lead.id, type: selected.channel, title: selected.channel === 'whatsapp' ? `Contato da campanha ${selected.name} • ${whatsappChannel.name}` : `Contato da campanha ${selected.name}`, description: selected.channel === 'whatsapp' ? `${text} Canal: ${whatsappChannel.name} (${whatsappChannel.phoneNumber || 'número não configurado'}).` : text, date: now })
     updateLead({ ...lead, lastContactAt: now, contactCount: (lead.contactCount || 0) + 1 })
     markContacted(selected.id, lead.id)
   }
@@ -60,7 +64,7 @@ export function ContactCampaignsPage() {
     {!campaigns.length ? <section className="panel-card empty-campaign"><MessageCircle size={34}/><h2>Nenhuma campanha criada</h2><p>Selecione leads no Kanban do CRM e use “Criar campanha”.</p></section> : <section className="campaign-layout">
       <aside className="panel-card campaign-list">{campaigns.map((campaign) => <button type="button" key={campaign.id} className={campaign.id === selected?.id ? 'active' : ''} onClick={() => setSelectedId(campaign.id)}><div>{campaign.channel === 'whatsapp' ? <MessageCircle/> : campaign.channel === 'email' ? <Mail/> : <Phone/>}<span><strong>{campaign.name}</strong><small>{campaign.contactedLeadIds.length}/{campaign.leadIds.length} contatos</small></span></div><b>{campaign.status}</b></button>)}</aside>
       {selected && <main className="panel-card campaign-detail">
-        <div className="campaign-detail-head"><div><span>{selected.channel}</span><h2>{selected.name}</h2><p>{selected.message}</p></div><button type="button" className="danger-icon" onClick={() => setConfirmDelete(true)}><Trash2/></button></div>
+        <div className="campaign-detail-head"><div><span>{selected.channel}{selected.channel === 'whatsapp' ? ` • ${(whatsappChannels.find((item) => item.id === selected.whatsappChannelId) || whatsappChannels[0]).name}` : ''}</span><h2>{selected.name}</h2><p>{selected.message}</p></div><button type="button" className="danger-icon" onClick={() => setConfirmDelete(true)}><Trash2/></button></div>
         <div className="campaign-settings"><div><Clock3/><span><strong>{selected.intervalMinutes} min</strong><small>intervalo recomendado</small></span></div><div><UsersRound/><span><strong>{selected.dailyLimit}/dia</strong><small>limite configurado</small></span></div><div><ShieldAlert/><span><strong>{queue.length - eligible.length}</strong><small>suprimidos/sem opt-in</small></span></div><div><CheckCircle2/><span><strong>{pending.length}</strong><small>pendentes elegíveis</small></span></div></div>
         <div className="campaign-actions"><Button onClick={openNext} disabled={!pending.length}><Play size={17}/> Abrir próximo contato</Button><Button className="secondary" onClick={() => updateCampaign(selected.id, { status: selected.status === 'paused' ? 'active' : 'paused' })}>{selected.status === 'paused' ? <Play size={17}/> : <Pause size={17}/>} {selected.status === 'paused' ? 'Retomar' : 'Pausar'}</Button></div>
         <div className="campaign-queue">{queue.map((lead) => lead && <article key={lead.id} className={selected.contactedLeadIds.includes(lead.id) ? 'done' : lead.consentStatus !== 'granted' || lead.doNotContact ? 'blocked' : ''}><div><strong>{lead.name}</strong><span>{lead.company || lead.city || 'Sem empresa'}</span></div><small>{selected.contactedLeadIds.includes(lead.id) ? 'Concluído' : lead.consentStatus !== 'granted' || lead.doNotContact ? 'Bloqueado por consentimento' : 'Aguardando contato'}</small></article>)}</div>
