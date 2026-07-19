@@ -114,3 +114,21 @@ test('sincronização de contatos usa People API e revisão local', () => {
   assert.match(page, /saveContactBindings/)
   assert.doesNotMatch(page, /deleteGoogleContact/)
 })
+
+
+test('backend do WhatsApp exige organização, consentimento e segredos do servidor', () => {
+  const migration = read('supabase/migrations/202607190004_whatsapp_business_backend.sql')
+  const backend = read('supabase/functions/whatsapp-send/index.ts')
+  const frontend = read('src/lib/whatsappBusinessStore.ts')
+  assert.match(migration, /channel_key in \('channel-1', 'channel-2'\)/)
+  assert.match(migration, /contact_communication_consents/)
+  assert.match(migration, /whatsapp_message_deliveries/)
+  assert.match(backend, /auth\.getUser\(\)/)
+  assert.match(backend, /organization_members/)
+  assert.match(backend, /Consentimento ativo não encontrado/)
+  assert.match(backend, /WHATSAPP_ACCESS_TOKEN_CHANNEL_1/)
+  assert.match(backend, /WHATSAPP_ACCESS_TOKEN_CHANNEL_2/)
+  assert.match(backend, /META_GRAPH_API_VERSION/)
+  assert.doesNotMatch(migration, /access_token\s+text/)
+  assert.doesNotMatch(frontend, /WHATSAPP_ACCESS_TOKEN|accessToken/)
+})
