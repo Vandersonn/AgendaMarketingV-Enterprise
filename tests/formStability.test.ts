@@ -46,3 +46,11 @@ test('cadastros críticos definem o campo inicial de foco pelo nome estável', (
   assert.match(crm, /initialFocusSelector="input\[name=\'name\'\]"/)
   assert.match(clients, /initialFocusSelector="input\[name=\'name\'\]"/)
 })
+
+test('autenticação não distribui credenciais padrão', () => {
+  const authStore = read('src/lib/authStore.ts')
+  const authPage = read('src/modules/auth/pages/AuthPage.tsx')
+  assert.doesNotMatch(authStore, /password:\s*['"]123456['"]/)
+  assert.doesNotMatch(authStore, /users\.unshift\(owner\)/)
+  assert.doesNotMatch(authPage, /useState\(['"]123456['"]\)/)
+})
