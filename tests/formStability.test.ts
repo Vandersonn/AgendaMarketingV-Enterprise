@@ -88,3 +88,13 @@ test('autenticação não distribui credenciais padrão', () => {
   assert.doesNotMatch(authStore, /users\.unshift\(owner\)/)
   assert.doesNotMatch(authPage, /useState\(['"]123456['"]\)/)
 })
+
+
+test('Electron restringe URLs e arquivos recebidos pelo renderer', () => {
+  const main = read('electron/main.cjs')
+  assert.match(main, /allowedExternalProtocols/)
+  assert.match(main, /normalizeExternalUrl\(url\)/)
+  assert.match(main, /assertAuthorizedCloudFile\(filePath\)/)
+  assert.match(main, /will-navigate/)
+  assert.doesNotMatch(main, /system:openExternal', \(_event, url\) => shell\.openExternal\(url\)/)
+})
