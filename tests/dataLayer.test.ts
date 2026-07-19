@@ -3,6 +3,7 @@ import test from 'node:test'
 import { MemoryStorageProvider } from '../src/data/providers/MemoryStorageProvider.ts'
 import { CrmRepository, CRM_STORAGE_KEY, type CrmData } from '../src/data/repositories/CrmRepository.ts'
 import { CURRENT_DATA_SCHEMA_VERSION, DATA_SCHEMA_KEY, migrateLegacyData } from '../src/data/migrations/migrateLegacyData.ts'
+import { buildContactSyncPlan, type ContactBinding, type GoogleContact, type LocalContact } from '../src/lib/googleContactsSync.ts'
 
 const empty: CrmData = { clients: [], leads: [], activities: [], proposals: [] }
 
@@ -39,4 +40,34 @@ test('migração é idempotente', () => {
   const first = migrateLegacyData(storage, empty)
   const second = migrateLegacyData(storage, empty)
   assert.deepEqual(second, first)
+})
+
+test('vínculo persistente reconhece contato após telefone e e-mail mudarem', () => {
+  const google: GoogleContact = {
+    resourceName: 'people/c1',
+    etag: 'etag-1',
+    name: 'Contato Atualizado',
+    email: 'novo@empresa.com',
+    phone: '31999990000',
+    company: 'Empresa',
+    sources: [{ type: 'CONTACT' }]
+  }
+  const local: LocalContact = {
+    type: 'client',
+    id: 'client-1',
+    name: 'Contato Antigo',
+    email: 'antigo@empresa.com',
+    phone: '31911110000',
+    company: 'Empresa'
+  }
+  const binding: ContactBinding = {
+    resourceName: 'people/c1',
+    localType: 'client',
+    localId: 'client-1',
+    linkedAt: '2026-01-01T00:00:00.000Z'
+  }
+  const plan = buildContactSyncPlan([google], [local], [binding])
+  assert.equal(plan.matched.length, 1)
+  assert.equal(plan.googleOnly.length, 0)
+  assert.equal(plan.localOnly.length, 0)
 })
