@@ -54,6 +54,8 @@ test('WhatsApp oferece exatamente dois canais locais sem exportar dados', () => 
   const campaigns = read('src/modules/crm/pages/ContactCampaignsPage.tsx')
   assert.match(store, /channel-1/)
   assert.match(store, /channel-2/)
+  assert.match(store, /whatsapp_channel_assignments/)
+  assert.match(store, /assignContact/)
   assert.match(crm, /whatsappChannelId/)
   assert.match(page, /Canal de saída/)
   assert.match(campaigns, /whatsappChannelId/)
