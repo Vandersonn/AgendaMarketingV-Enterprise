@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AddressBook, Download, RefreshCw, Upload } from 'lucide-react'
 import { Button } from '../../../components/Button'
 import { useCloudProvidersStore } from '../../../lib/cloudProvidersStore'
 import { useCrmStore } from '../../../lib/crmStore'
-import { buildContactSyncPlan, collectLocalContacts, contactRecordsDiffer, type GoogleContact } from '../../../lib/googleContactsSync'
+import { buildContactSyncPlan, collectLocalContacts, contactRecordsDiffer, loadContactBindings, mergeContactBindings, saveContactBindings, type GoogleContact } from '../../../lib/googleContactsSync'
 
 export function ContactsSyncPage() {
   const { providers, connectGoogle } = useCloudProvidersStore()
@@ -13,14 +13,22 @@ export function ContactsSyncPage() {
   const updateClient = useCrmStore((state) => state.updateClient)
   const updateLead = useCrmStore((state) => state.updateLead)
   const [googleContacts, setGoogleContacts] = useState<GoogleContact[]>([])
+  const [bindings, setBindings] = useState(loadContactBindings)
   const [running, setRunning] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
   const clientId = providers['google-drive'].googleClientId
   const localContacts = useMemo(() => collectLocalContacts(clients, leads), [clients, leads])
-  const plan = useMemo(() => buildContactSyncPlan(googleContacts, localContacts), [googleContacts, localContacts])
+  const plan = useMemo(() => buildContactSyncPlan(googleContacts, localContacts, bindings), [googleContacts, localContacts, bindings])
   const conflicts = useMemo(() => plan.matched.filter(({ google, local }) => contactRecordsDiffer(google, local)), [plan.matched])
+
+  useEffect(() => {
+    const next = mergeContactBindings(bindings, plan.matched)
+    if (JSON.stringify(next) === JSON.stringify(bindings)) return
+    saveContactBindings(next)
+    setBindings(next)
+  }, [bindings, plan.matched])
 
   async function run(action: () => Promise<string>) {
     setRunning(true)
@@ -119,7 +127,7 @@ export function ContactsSyncPage() {
       <article className="metric-card"><span>Google</span><strong>{googleContacts.length}</strong><small>contatos encontrados</small></article>
       <article className="metric-card"><span>Novos no Google</span><strong>{plan.googleOnly.length}</strong><small>prontos para importar</small></article>
       <article className="metric-card"><span>Novos no sistema</span><strong>{plan.localOnly.length}</strong><small>prontos para exportar</small></article>
-      <article className="metric-card"><span>Conflitos</span><strong>{conflicts.length}</strong><small>exigem escolha manual</small></article>
+      <article className="metric-card"><span>Conflitos</span><strong>{conflicts.length}</strong><small>{bindings.length} vínculo(s) persistente(s)</small></article>
     </section>
 
     <article className="panel-card">
