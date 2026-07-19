@@ -8,7 +8,7 @@ const integration = url && serviceRole ? test : test.skip
 
 integration('ativação concorrente respeita o limite transacional de dispositivos', async () => {
   const client = createClient(url!, serviceRole!, { auth: { persistSession: false } })
-  const key = `TEST-${crypto.randomUUID()}`
+  const key = `TEST-${crypto.randomUUID()}`.toUpperCase()
   const { data: license, error: createError } = await client
     .from('license_server_licenses')
     .insert({ key, expires_at: new Date(Date.now() + 86_400_000).toISOString(), max_devices: 1 })
