@@ -104,7 +104,7 @@ async function googleRequest(url, options, clientId) {
   })
   if (!response.ok) {
     const text = await response.text()
-    throw new Error(`Google Drive: ${response.status} ${text.slice(0, 300)}`)
+    throw new Error(`Google: ${response.status} ${text.slice(0, 300)}`)
   }
   return response
 }
@@ -295,7 +295,7 @@ ipcMain.handle('google:connect', async (_event, clientId) => {
       authUrl.searchParams.set('client_id', clientId)
       authUrl.searchParams.set('redirect_uri', redirectUri)
       authUrl.searchParams.set('response_type', 'code')
-      authUrl.searchParams.set('scope', 'https://www.googleapis.com/auth/drive.file')
+      authUrl.searchParams.set('scope', 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/contacts')
       authUrl.searchParams.set('access_type', 'offline')
       authUrl.searchParams.set('prompt', 'consent')
       authUrl.searchParams.set('code_challenge', challenge)
@@ -348,6 +348,60 @@ ipcMain.handle('google:uploadBackup', async (_event, payload) => {
     clientId
   )
   return { ok: true, file: await response.json() }
+})
+
+
+ipcMain.handle('google:contacts:list', async (_event, clientId) => {
+  if (!clientId) throw new Error('Client ID do Google não configurado.')
+  const contacts = []
+  let pageToken = ''
+  do {
+    const query = new URLSearchParams({
+      personFields: 'names,emailAddresses,phoneNumbers,organizations,metadata',
+      pageSize: '1000',
+      sortOrder: 'FIRST_NAME_ASCENDING'
+    })
+    if (pageToken) query.set('pageToken', pageToken)
+    const response = await googleRequest(
+      `https://people.googleapis.com/v1/people/me/connections?${query}`,
+      { method: 'GET' },
+      clientId
+    )
+    const data = await response.json()
+    for (const person of data.connections || []) {
+      if (person.metadata?.deleted) continue
+      contacts.push({
+        resourceName: person.resourceName,
+        etag: person.etag || '',
+        name: person.names?.[0]?.displayName || '',
+        email: person.emailAddresses?.[0]?.value || '',
+        phone: person.phoneNumbers?.[0]?.value || '',
+        company: person.organizations?.[0]?.name || ''
+      })
+    }
+    pageToken = data.nextPageToken || ''
+  } while (pageToken)
+  return { ok: true, contacts }
+})
+
+ipcMain.handle('google:contacts:create', async (_event, payload) => {
+  const clientId = payload?.clientId
+  const contact = payload?.contact || {}
+  if (!clientId) throw new Error('Client ID do Google não configurado.')
+  if (!String(contact.name || '').trim()) throw new Error('Nome do contato obrigatório.')
+  const person = {
+    names: [{ givenName: String(contact.name).trim() }],
+    emailAddresses: contact.email ? [{ value: String(contact.email).trim() }] : [],
+    phoneNumbers: contact.phone ? [{ value: String(contact.phone).trim() }] : [],
+    organizations: contact.company ? [{ name: String(contact.company).trim() }] : []
+  }
+  const response = await googleRequest(
+    'https://people.googleapis.com/v1/people:createContact',
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(person) },
+    clientId
+  )
+  const created = await response.json()
+  return { ok: true, contact: { resourceName: created.resourceName, etag: created.etag || '' } }
 })
 
 ipcMain.handle('google:listBackups', async (_event, clientId) => {
