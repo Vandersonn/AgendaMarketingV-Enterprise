@@ -55,3 +55,13 @@ test('Electron restringe URLs e arquivos recebidos pelo renderer', () => {
   assert.match(main, /will-navigate/)
   assert.doesNotMatch(main, /system:openExternal', \(_event, url\) => shell\.openExternal\(url\)/)
 })
+
+test('sincronização de contatos usa People API e revisão local', () => {
+  const main = read('electron/main.cjs')
+  const page = read('src/modules/integrations/pages/ContactsSyncPage.tsx')
+  assert.match(main, /people\.googleapis\.com/)
+  assert.match(main, /google:contacts:list/)
+  assert.match(main, /google:contacts:create/)
+  assert.match(page, /buildContactSyncPlan/)
+  assert.doesNotMatch(page, /deleteGoogleContact/)
+})
