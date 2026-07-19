@@ -32,6 +32,8 @@ export function CrmPage() {
   const [communicationLead, setCommunicationLead] = useState<Lead | null>(null)
   const [contactNote, setContactNote] = useState('')
   const whatsappChannels = useWhatsAppBusinessStore((state) => state.channels)
+  const whatsappAssignments = useWhatsAppBusinessStore((state) => state.assignments)
+  const assignWhatsAppContact = useWhatsAppBusinessStore((state) => state.assignContact)
   const [whatsappChannelId, setWhatsappChannelId] = useState<'channel-1' | 'channel-2'>('channel-1')
   const [selectedLost, setSelectedLost] = useState<string[]>([])
   const [selectedCampaignLeads, setSelectedCampaignLeads] = useState<string[]>([])
@@ -66,6 +68,11 @@ export function CrmPage() {
     const hours = (Date.now() - new Date(lead.lastContactAt).getTime()) / 36e5
     if (hours < 24 && !lead.lastResponseAt) return { level: 'warning', label: 'Aguardar antes de insistir', detail: `Último contato há ${Math.max(1, Math.floor(hours))} hora(s), sem resposta registrada.` }
     return { level: 'ok', label: 'Contato liberado', detail: 'Use uma mensagem relevante e respeite eventual pedido de descadastro.' }
+  }
+
+  function openLeadCommunication(lead: Lead) {
+    setCommunicationLead(lead)
+    setWhatsappChannelId(whatsappAssignments[`lead:${lead.id}`] || 'channel-1')
   }
 
   function updateCommunicationLead(patch: Partial<Lead>) {
@@ -297,7 +304,7 @@ export function CrmPage() {
         slaWarningPercent={slaWarningPercent}
         onDropStage={drop}
         onDragStart={setDraggedId}
-        onOpenLead={setCommunicationLead}
+        onOpenLead={openLeadCommunication}
         onToggleLost={toggleLost}
         onSetSelectedLost={setSelectedLost}
         onDeleteSelectedLost={deleteSelectedLost}
@@ -349,7 +356,7 @@ export function CrmPage() {
             </div>
 
             <label>Canal do WhatsApp
-              <select value={whatsappChannelId} onChange={(event) => setWhatsappChannelId(event.target.value as 'channel-1' | 'channel-2')}>
+              <select value={whatsappChannelId} onChange={(event) => { const id = event.target.value as 'channel-1' | 'channel-2'; setWhatsappChannelId(id); assignWhatsAppContact(`lead:${communicationLead.id}`, id) }}>
                 {whatsappChannels.filter((channel) => channel.enabled).map((channel) => <option key={channel.id} value={channel.id}>{channel.name} — {channel.phoneNumber || 'configurar número'}</option>)}
               </select>
             </label>
