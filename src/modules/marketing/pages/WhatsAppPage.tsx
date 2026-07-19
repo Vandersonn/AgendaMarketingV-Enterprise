@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ExternalLink, MessageCircle, Save } from 'lucide-react'
 import { Button } from '../../../components/Button'
 import { useCrmStore } from '../../../lib/crmStore'
-import { useWhatsAppBusinessStore } from '../../../lib/whatsappBusinessStore'
+import { useWhatsAppBusinessStore, validateWhatsAppChannels } from '../../../lib/whatsappBusinessStore'
 
 export function WhatsAppPage() {
   const clients = useCrmStore((state) => state.clients)
@@ -12,6 +12,7 @@ export function WhatsAppPage() {
   const [message, setMessage] = useState('Olá! Tudo bem? Estou entrando em contato pela AgendaMarketingV.')
   const [status, setStatus] = useState('')
 
+  const warnings = useMemo(() => validateWhatsAppChannels(channels), [channels])
   const selected = useMemo(() => clients.find((item) => item.id === clientId), [clients, clientId])
   useEffect(() => {
     if (!clientId) return
@@ -41,6 +42,7 @@ export function WhatsAppPage() {
         <label>WhatsApp Business Account ID<input value={item.businessAccountId} onChange={(event) => updateChannel(item.id, { businessAccountId: event.target.value.replace(/\D/g, '') })} placeholder="ID fornecido pela Meta"/></label>
         <label>Phone Number ID<input value={item.phoneNumberId} onChange={(event) => updateChannel(item.id, { phoneNumberId: event.target.value.replace(/\D/g, '') })} placeholder="ID do número na Meta"/></label>
         <label><input type="checkbox" checked={item.enabled} onChange={(event) => updateChannel(item.id, { enabled: event.target.checked })}/> Canal ativo</label>
+        {warnings[item.id].map((warning) => <div className="form-message" key={warning}>{warning}</div>)}
         <small><Save size={14}/> {item.businessAccountId && item.phoneNumberId ? 'Identificadores da Meta cadastrados. Backend ainda não conectado.' : 'Modo local. Preencha os IDs quando os números forem aprovados pela Meta.'} Nenhum token é armazenado.</small>
       </article>)}
     </section>
