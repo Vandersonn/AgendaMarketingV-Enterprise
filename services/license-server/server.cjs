@@ -1,211 +1,223 @@
 const http = require('http')
-const fs = require('fs')
-const path = require('path')
 const crypto = require('crypto')
+const { createClient } = require('@supabase/supabase-js')
 
 const PORT = Number(process.env.PORT || 8787)
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'change-me-now'
-const DATA_DIR = path.join(__dirname, 'data')
-const DB_FILE = path.join(DATA_DIR, 'license-server.json')
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN
+const SUPABASE_URL = process.env.SUPABASE_URL
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:5173'
 
-fs.mkdirSync(DATA_DIR, { recursive: true })
+if (!ADMIN_TOKEN || ADMIN_TOKEN.length < 32 || ADMIN_TOKEN === 'change-me-now') {
+  throw new Error('ADMIN_TOKEN é obrigatório e deve ter pelo menos 32 caracteres.')
+}
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error('SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY são obrigatórios.')
+}
 
-function readDb() {
-  try {
-    return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'))
-  } catch {
-    return { licenses: [], activations: [], events: [] }
+const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
+const rateLimits = new Map()
+
+function rateLimited(request, limit = 60, windowMs = 60_000) {
+  const ip = request.socket.remoteAddress || 'unknown'
+  const now = Date.now()
+  const entry = rateLimits.get(ip)
+  if (!entry || entry.resetAt <= now) {
+    rateLimits.set(ip, { count: 1, resetAt: now + windowMs })
+    return false
   }
+  entry.count += 1
+  return entry.count > limit
 }
 
-function writeDb(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8')
-}
-
-function json(response, status, payload) {
-  response.writeHead(status, {
+function json(response, status, payload, origin) {
+  const headers = {
     'Content-Type': 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS'
-  })
+    'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
+    'Vary': 'Origin'
+  }
+  if (origin === ALLOWED_ORIGIN) headers['Access-Control-Allow-Origin'] = origin
+  response.writeHead(status, headers)
   response.end(JSON.stringify(payload))
 }
 
 function body(request) {
   return new Promise((resolve, reject) => {
-    let data = ''
-    request.on('data', chunk => {
-      data += chunk
-      if (data.length > 1024 * 1024) request.destroy()
+    const chunks = []
+    let size = 0
+    request.on('data', (chunk) => {
+      size += chunk.length
+      if (size > 64 * 1024) {
+        reject(new Error('PAYLOAD_TOO_LARGE'))
+        request.destroy()
+        return
+      }
+      chunks.push(chunk)
     })
     request.on('end', () => {
-      try { resolve(data ? JSON.parse(data) : {}) } catch (error) { reject(error) }
+      try { resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}) }
+      catch { reject(new Error('INVALID_JSON')) }
     })
     request.on('error', reject)
   })
 }
 
 function isAdmin(request) {
-  return request.headers.authorization === `Bearer ${ADMIN_TOKEN}`
+  const supplied = String(request.headers.authorization || '').replace(/^Bearer\s+/i, '')
+  const expected = Buffer.from(ADMIN_TOKEN)
+  const candidate = Buffer.from(supplied)
+  return candidate.length === expected.length && crypto.timingSafeEqual(candidate, expected)
 }
 
-function event(db, licenseKey, type, description) {
-  db.events.unshift({
-    id: crypto.randomUUID(),
-    licenseKey,
-    type,
-    description,
-    createdAt: new Date().toISOString()
-  })
-  db.events = db.events.slice(0, 5000)
+function mapLicense(row) {
+  if (!row) return null
+  return {
+    id: row.id, key: row.key, plan: row.plan, status: row.status,
+    customerName: row.customer_name, customerEmail: row.customer_email,
+    companyName: row.company_name, cnpj: row.cnpj, maxDevices: row.max_devices,
+    issuedAt: row.issued_at, expiresAt: row.expires_at, notes: row.notes
+  }
 }
 
-function activeCount(db, key) {
-  return db.activations.filter(item => item.licenseKey === key && item.status === 'active').length
+function mapActivation(row) {
+  if (!row) return null
+  return {
+    id: row.id, licenseKey: row.license_key || row.license?.key,
+    deviceId: row.device_id, deviceName: row.device_name,
+    organizationId: row.organization_id, status: row.status,
+    activatedAt: row.activated_at, lastSeenAt: row.last_seen_at,
+    releasedAt: row.released_at || ''
+  }
+}
+
+function rpcError(response, error, origin) {
+  const message = String(error?.message || '')
+  if (message.includes('LICENSE_NOT_FOUND') || message.includes('DEVICE_NOT_FOUND')) return json(response, 404, { ok: false, message: 'Licença ou dispositivo não encontrado.' }, origin)
+  if (message.includes('LICENSE_BLOCKED') || message.includes('LICENSE_EXPIRED')) return json(response, 403, { ok: false, message: 'Licença bloqueada ou expirada.' }, origin)
+  if (message.includes('DEVICE_LIMIT')) return json(response, 409, { ok: false, message: 'Limite de dispositivos atingido.' }, origin)
+  if (message.includes('DEVICE_INVALID')) return json(response, 400, { ok: false, message: 'Dispositivo inválido.' }, origin)
+  console.error('license database error', message)
+  return json(response, 503, { ok: false, message: 'Serviço de licenças temporariamente indisponível.' }, origin)
 }
 
 const server = http.createServer(async (request, response) => {
-  if (request.method === 'OPTIONS') return json(response, 204, {})
-  const url = new URL(request.url, `http://${request.headers.host}`)
+  const origin = request.headers.origin || ''
+  if (request.method === 'OPTIONS') {
+    if (origin !== ALLOWED_ORIGIN) return json(response, 403, { ok: false }, origin)
+    return json(response, 204, {}, origin)
+  }
+  if (rateLimited(request)) return json(response, 429, { ok: false, message: 'Muitas requisições.' }, origin)
+
+  let url
+  try { url = new URL(request.url, 'http://localhost') }
+  catch { return json(response, 400, { ok: false, message: 'URL inválida.' }, origin) }
 
   try {
     if (url.pathname === '/health' && request.method === 'GET') {
-      return json(response, 200, { ok: true, service: 'DEVVANDERSON License Server', version: '1.0.0' })
+      return json(response, 200, { ok: true, service: 'DEVVANDERSON License Server', storage: 'postgresql' }, origin)
     }
 
     if (url.pathname === '/api/licenses/activate' && request.method === 'POST') {
       const payload = await body(request)
-      const db = readDb()
-      const license = db.licenses.find(item => item.key === String(payload.key || '').toUpperCase())
-      if (!license) return json(response, 404, { ok: false, message: 'Licença não encontrada.' })
-      if (license.status === 'revoked') return json(response, 403, { ok: false, message: 'Licença revogada.' })
-      if (new Date(license.expiresAt).getTime() < Date.now()) return json(response, 403, { ok: false, message: 'Licença expirada.' })
-
-      const existing = db.activations.find(item => item.licenseKey === license.key && item.deviceId === payload.deviceId && item.status !== 'released')
-      if (existing) {
-        existing.status = 'active'
-        existing.lastSeenAt = new Date().toISOString()
-        writeDb(db)
-        return json(response, 200, { ok: true, license, activation: existing })
-      }
-
-      if (activeCount(db, license.key) >= Number(license.maxDevices || 1)) {
-        event(db, license.key, 'blocked', 'Ativação bloqueada por limite de dispositivos.')
-        writeDb(db)
-        return json(response, 409, { ok: false, message: 'Limite de dispositivos atingido.' })
-      }
-
-      const activation = {
-        id: crypto.randomUUID(),
-        licenseKey: license.key,
-        deviceId: payload.deviceId,
-        deviceName: payload.deviceName || 'Dispositivo',
-        organizationId: payload.organizationId || '',
-        status: 'active',
-        activatedAt: new Date().toISOString(),
-        lastSeenAt: new Date().toISOString(),
-        releasedAt: ''
-      }
-      db.activations.unshift(activation)
-      event(db, license.key, 'activated', `Dispositivo ${activation.deviceName} ativado.`)
-      writeDb(db)
-      return json(response, 200, { ok: true, license, activation })
+      const { data, error } = await db.rpc('activate_license', {
+        p_key: String(payload.key || '').toUpperCase(),
+        p_device_id: String(payload.deviceId || ''),
+        p_device_name: String(payload.deviceName || 'Dispositivo').slice(0, 200),
+        p_organization_id: String(payload.organizationId || '').slice(0, 200)
+      })
+      if (error) return rpcError(response, error, origin)
+      return json(response, 200, { ok: true, license: mapLicense(data.license), activation: mapActivation(data.activation) }, origin)
     }
 
     if (url.pathname === '/api/licenses/validate' && request.method === 'POST') {
       const payload = await body(request)
-      const db = readDb()
-      const license = db.licenses.find(item => item.key === String(payload.key || '').toUpperCase())
-      const activation = db.activations.find(item => item.licenseKey === license?.key && item.deviceId === payload.deviceId)
-      if (!license || !activation) return json(response, 404, { ok: false, message: 'Licença ou dispositivo não encontrado.' })
-      if (license.status !== 'active' && license.status !== 'available') return json(response, 403, { ok: false, message: 'Licença bloqueada.' })
-      if (activation.status !== 'active') return json(response, 403, { ok: false, message: 'Dispositivo bloqueado.' })
-      if (new Date(license.expiresAt).getTime() < Date.now()) return json(response, 403, { ok: false, message: 'Licença expirada.' })
-      activation.lastSeenAt = new Date().toISOString()
-      writeDb(db)
-      return json(response, 200, { ok: true, license, activation })
+      const { data, error } = await db.rpc('validate_license', {
+        p_key: String(payload.key || '').toUpperCase(),
+        p_device_id: String(payload.deviceId || '')
+      })
+      if (error) return rpcError(response, error, origin)
+      return json(response, 200, { ok: true, license: mapLicense(data.license), activation: mapActivation(data.activation) }, origin)
     }
 
+    if (!url.pathname.startsWith('/api/admin/')) return json(response, 404, { ok: false, message: 'Rota não encontrada.' }, origin)
+    if (!isAdmin(request)) return json(response, 401, { ok: false, message: 'Não autorizado.' }, origin)
+
     if (url.pathname === '/api/admin/overview' && request.method === 'GET') {
-      if (!isAdmin(request)) return json(response, 401, { ok: false, message: 'Não autorizado.' })
-      const db = readDb()
+      const [licensesResult, activationsResult, eventsResult] = await Promise.all([
+        db.from('license_server_licenses').select('*').order('created_at', { ascending: false }),
+        db.from('license_server_activations').select('*, license:license_server_licenses(key)').order('activated_at', { ascending: false }),
+        db.from('license_server_events').select('*').order('created_at', { ascending: false }).limit(5000)
+      ])
+      const error = licensesResult.error || activationsResult.error || eventsResult.error
+      if (error) return rpcError(response, error, origin)
+      const licenses = licensesResult.data.map(mapLicense)
+      const activations = activationsResult.data.map(mapActivation)
       return json(response, 200, {
         ok: true,
         summary: {
-          licenses: db.licenses.length,
-          activeLicenses: db.licenses.filter(item => item.status === 'active' || item.status === 'available').length,
-          revokedLicenses: db.licenses.filter(item => item.status === 'revoked').length,
-          activeDevices: db.activations.filter(item => item.status === 'active').length
+          licenses: licenses.length,
+          activeLicenses: licenses.filter((item) => ['active', 'available'].includes(item.status)).length,
+          revokedLicenses: licenses.filter((item) => item.status === 'revoked').length,
+          activeDevices: activations.filter((item) => item.status === 'active').length
         },
-        licenses: db.licenses,
-        activations: db.activations,
-        events: db.events
-      })
+        licenses,
+        activations,
+        events: eventsResult.data
+      }, origin)
     }
 
     if (url.pathname === '/api/admin/licenses' && request.method === 'POST') {
-      if (!isAdmin(request)) return json(response, 401, { ok: false, message: 'Não autorizado.' })
       const payload = await body(request)
-      const db = readDb()
-      const key = String(payload.key || '').toUpperCase()
-      if (!key) return json(response, 400, { ok: false, message: 'Chave obrigatória.' })
-      if (db.licenses.some(item => item.key === key)) return json(response, 409, { ok: false, message: 'Chave já cadastrada.' })
-
-      const license = {
-        id: crypto.randomUUID(),
-        key,
-        plan: payload.plan || 'pro',
-        status: payload.status || 'available',
-        customerName: payload.customerName || '',
-        customerEmail: payload.customerEmail || '',
-        companyName: payload.companyName || '',
-        cnpj: payload.cnpj || '',
-        maxDevices: Number(payload.maxDevices || 1),
-        issuedAt: payload.issuedAt || new Date().toISOString(),
-        expiresAt: payload.expiresAt,
-        notes: payload.notes || ''
-      }
-      db.licenses.unshift(license)
-      event(db, key, 'generated', 'Licença cadastrada no servidor.')
-      writeDb(db)
-      return json(response, 201, { ok: true, license })
+      const key = String(payload.key || '').trim().toUpperCase()
+      if (!key || !payload.expiresAt) return json(response, 400, { ok: false, message: 'Chave e validade são obrigatórias.' }, origin)
+      const { data, error } = await db.from('license_server_licenses').insert({
+        key, plan: payload.plan || 'pro', status: payload.status || 'available',
+        customer_name: payload.customerName || '', customer_email: payload.customerEmail || '',
+        company_name: payload.companyName || '', cnpj: payload.cnpj || '',
+        max_devices: Number(payload.maxDevices || 1), issued_at: payload.issuedAt || new Date().toISOString(),
+        expires_at: payload.expiresAt, notes: payload.notes || ''
+      }).select().single()
+      if (error) return rpcError(response, error, origin)
+      return json(response, 201, { ok: true, license: mapLicense(data) }, origin)
     }
 
-    const licenseMatch = url.pathname.match(/^\/api\/admin\/licenses\/([^/]+)$/)
+    const licenseMatch = url.pathname.match(/^\/api\/admin\/licenses\/([0-9a-f-]{36})$/i)
     if (licenseMatch && request.method === 'PATCH') {
-      if (!isAdmin(request)) return json(response, 401, { ok: false, message: 'Não autorizado.' })
       const payload = await body(request)
-      const db = readDb()
-      const license = db.licenses.find(item => item.id === licenseMatch[1])
-      if (!license) return json(response, 404, { ok: false, message: 'Licença não encontrada.' })
-      Object.assign(license, payload)
-      event(db, license.key, payload.status === 'revoked' ? 'revoked' : 'renewed', 'Licença atualizada no servidor.')
-      writeDb(db)
-      return json(response, 200, { ok: true, license })
+      const patch = {}
+      const fields = {
+        plan: 'plan', status: 'status', customerName: 'customer_name', customerEmail: 'customer_email',
+        companyName: 'company_name', cnpj: 'cnpj', maxDevices: 'max_devices',
+        issuedAt: 'issued_at', expiresAt: 'expires_at', notes: 'notes'
+      }
+      for (const [source, target] of Object.entries(fields)) if (payload[source] !== undefined) patch[target] = payload[source]
+      patch.updated_at = new Date().toISOString()
+      const { data, error } = await db.from('license_server_licenses').update(patch).eq('id', licenseMatch[1]).select().single()
+      if (error) return rpcError(response, error, origin)
+      return json(response, 200, { ok: true, license: mapLicense(data) }, origin)
     }
 
-    const activationMatch = url.pathname.match(/^\/api\/admin\/activations\/([^/]+)$/)
+    const activationMatch = url.pathname.match(/^\/api\/admin\/activations\/([0-9a-f-]{36})$/i)
     if (activationMatch && request.method === 'PATCH') {
-      if (!isAdmin(request)) return json(response, 401, { ok: false, message: 'Não autorizado.' })
       const payload = await body(request)
-      const db = readDb()
-      const activation = db.activations.find(item => item.id === activationMatch[1])
-      if (!activation) return json(response, 404, { ok: false, message: 'Ativação não encontrada.' })
-      Object.assign(activation, payload)
-      if (payload.status === 'released') activation.releasedAt = new Date().toISOString()
-      event(db, activation.licenseKey, 'device_updated', `Dispositivo alterado para ${activation.status}.`)
-      writeDb(db)
-      return json(response, 200, { ok: true, activation })
+      const allowed = ['active', 'blocked', 'released']
+      if (!allowed.includes(payload.status)) return json(response, 400, { ok: false, message: 'Status inválido.' }, origin)
+      const patch = { status: payload.status, released_at: payload.status === 'released' ? new Date().toISOString() : null }
+      const { data, error } = await db.from('license_server_activations').update(patch).eq('id', activationMatch[1]).select('*, license:license_server_licenses(key)').single()
+      if (error) return rpcError(response, error, origin)
+      return json(response, 200, { ok: true, activation: mapActivation(data) }, origin)
     }
 
-    return json(response, 404, { ok: false, message: 'Rota não encontrada.' })
+    return json(response, 404, { ok: false, message: 'Rota não encontrada.' }, origin)
   } catch (error) {
-    return json(response, 500, { ok: false, message: error.message || String(error) })
+    if (error.message === 'PAYLOAD_TOO_LARGE') return json(response, 413, { ok: false, message: 'Corpo muito grande.' }, origin)
+    if (error.message === 'INVALID_JSON') return json(response, 400, { ok: false, message: 'JSON inválido.' }, origin)
+    console.error('license server error', error instanceof Error ? error.message : String(error))
+    return json(response, 500, { ok: false, message: 'Erro interno.' }, origin)
   }
 })
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`DEVVANDERSON License Server ativo em http://localhost:${PORT}`)
-  console.log('Defina ADMIN_TOKEN no ambiente antes de usar em produção.')
+  console.log(`DEVVANDERSON License Server ativo na porta ${PORT} com PostgreSQL.`)
 })

@@ -78,7 +78,7 @@ Deno.serve(async (request) => {
           const nextStatus = String(status?.status || '')
           if (!providerMessageId || !['sent', 'delivered', 'read', 'failed'].includes(nextStatus)) continue
           const error = status?.errors?.[0]
-          await admin
+          const { error: statusError } = await admin
             .from('whatsapp_message_deliveries')
             .update({
               status: nextStatus,
@@ -89,6 +89,7 @@ Deno.serve(async (request) => {
             .eq('organization_id', channel.organization_id)
             .eq('channel_id', channel.id)
             .eq('provider_message_id', providerMessageId)
+          if (statusError) throw new Error('Falha ao persistir status de entrega.')
         }
 
         for (const message of value.messages || []) {
@@ -97,7 +98,7 @@ Deno.serve(async (request) => {
           const messageType = String(message?.type || 'unknown')
           if (!providerMessageId || sender.length < 8 || sender.length > 15) continue
           const receivedAt = new Date(Number(message?.timestamp || 0) * 1000)
-          await admin
+          const { error: inboundError } = await admin
             .from('whatsapp_inbound_messages')
             .upsert({
               organization_id: channel.organization_id,
@@ -108,6 +109,7 @@ Deno.serve(async (request) => {
               body: messageType === 'text' ? String(message?.text?.body || '').slice(0, 4096) : null,
               received_at: Number.isNaN(receivedAt.getTime()) ? new Date().toISOString() : receivedAt.toISOString()
             }, { onConflict: 'provider_message_id', ignoreDuplicates: true })
+          if (inboundError) throw new Error('Falha ao persistir mensagem recebida.')
         }
       }
     }

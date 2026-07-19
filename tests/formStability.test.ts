@@ -2,12 +2,13 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const root = new URL('../', import.meta.url)
 const read = (path: string) => readFileSync(new URL(path, root), 'utf8')
 
 function sourceFiles(directory: string): string[] {
-  const absolute = new URL(directory, root).pathname
+  const absolute = fileURLToPath(new URL(directory, root))
   return readdirSync(absolute).flatMap((name) => {
     const file = join(absolute, name)
     return statSync(file).isDirectory()

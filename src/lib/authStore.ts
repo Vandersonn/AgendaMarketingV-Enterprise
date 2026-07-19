@@ -11,7 +11,9 @@ interface LocalUser {
 }
 
 interface StoredLocalUser extends LocalUser {
-  password: string
+  passwordHash: string
+  passwordSalt: string
+  password?: string
 }
 
 interface AuthState {
@@ -26,8 +28,62 @@ interface AuthState {
   recoverPassword: (email: string) => Promise<string | null>
 }
 
+const PASSWORD_ITERATIONS = 310_000
+
+function bytesToBase64(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes))
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  return Uint8Array.from(atob(value), (character) => character.charCodeAt(0))
+}
+
+function randomSalt(): string {
+  return bytesToBase64(crypto.getRandomValues(new Uint8Array(16)))
+}
+
+async function derivePassword(password: string, salt: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  )
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt: base64ToBytes(salt), iterations: PASSWORD_ITERATIONS },
+    key,
+    256
+  )
+  return bytesToBase64(new Uint8Array(bits))
+}
+
+async function protectPassword(password: string): Promise<Pick<StoredLocalUser, 'passwordHash' | 'passwordSalt'>> {
+  const passwordSalt = randomSalt()
+  return { passwordSalt, passwordHash: await derivePassword(password, passwordSalt) }
+}
+
 function getLocalUsers(): StoredLocalUser[] {
   return loadLocal<StoredLocalUser[]>('users', [])
+}
+
+async function migrateLegacyPasswords(): Promise<void> {
+  const users = getLocalUsers()
+  let changed = false
+  const migrated: StoredLocalUser[] = []
+  for (const user of users) {
+    if (user.password && (!user.passwordHash || !user.passwordSalt)) {
+      const protectedPassword = await protectPassword(user.password)
+      const { password: _removed, ...safeUser } = user
+      migrated.push({ ...safeUser, ...protectedPassword })
+      changed = true
+    } else {
+      const { password: _removed, ...safeUser } = user
+      migrated.push(safeUser as StoredLocalUser)
+      if (user.password) changed = true
+    }
+  }
+  if (changed) saveLocal('users', migrated)
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -39,13 +95,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (supabaseConfigured && supabase) {
       const { data } = await supabase.auth.getSession()
       set({ session: data.session, user: data.session?.user ?? null, loading: false })
-      supabase.auth.onAuthStateChange((_event, session) => {
-        set({ session, user: session?.user ?? null })
-      })
+      supabase.auth.onAuthStateChange((_event, session) => set({ session, user: session?.user ?? null }))
       return
     }
 
-    getLocalUsers()
+    await migrateLegacyPasswords()
     const localUser = loadLocal<LocalUser | null>('current_user', null)
     set({ user: localUser, session: null, loading: false })
   },
@@ -56,10 +110,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return error?.message ?? null
     }
 
-    const found = getLocalUsers().find(
-      (item) => item.email.toLowerCase() === email.trim().toLowerCase() && item.password === password
-    )
-    if (!found) return 'E-mail ou senha inválidos.'
+    const found = getLocalUsers().find((item) => item.email.toLowerCase() === email.trim().toLowerCase())
+    if (!found?.passwordHash || !found.passwordSalt) return 'E-mail ou senha inválidos.'
+    const candidate = await derivePassword(password, found.passwordSalt)
+    if (candidate !== found.passwordHash) return 'E-mail ou senha inválidos.'
 
     const safeUser: LocalUser = { id: found.id, email: found.email, name: found.name }
     saveLocal('current_user', safeUser)
@@ -71,25 +125,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signUp: async (email, password, name) => {
     if (supabaseConfigured && supabase) {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { full_name: name } }
-      })
+      const { error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: name } } })
       return error?.message ?? null
     }
 
     const users = getLocalUsers()
-    if (users.some((item) => item.email.toLowerCase() === email.trim().toLowerCase())) {
-      return 'Este e-mail já está cadastrado.'
-    }
-
-    users.push({
-      id: crypto.randomUUID(),
-      email: email.trim(),
-      name: name.trim(),
-      password
-    })
+    if (users.some((item) => item.email.toLowerCase() === email.trim().toLowerCase())) return 'Este e-mail já está cadastrado.'
+    const protectedPassword = await protectPassword(password)
+    users.push({ id: crypto.randomUUID(), email: email.trim(), name: name.trim(), ...protectedPassword })
     saveLocal('users', users)
     return null
   },
@@ -97,7 +140,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signOut: async () => {
     if (supabaseConfigured && supabase) await supabase.auth.signOut()
     const current = get().user
-    if (current) { useAuditStore.getState().log({ action: 'logout', module: 'Segurança', description: `Saída realizada por ${current.email}.`, user: 'name' in current ? current.name : current.email || 'Usuário' }) }
+    if (current) useAuditStore.getState().log({ action: 'logout', module: 'Segurança', description: `Saída realizada por ${current.email}.`, user: 'name' in current ? current.name : current.email || 'Usuário' })
     localStorage.removeItem('amv_professional_current_user')
     localStorage.removeItem('amv_professional_session_started_at')
     set({ user: null, session: null })
@@ -111,26 +154,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     const current = get().user
     if (!current) return 'Usuário não autenticado.'
-
-    const users = getLocalUsers().map((item) =>
-      item.id === current.id ? { ...item, password } : item
-    )
-    saveLocal('users', users)
+    const protectedPassword = await protectPassword(password)
+    saveLocal('users', getLocalUsers().map((item) => item.id === current.id ? { ...item, ...protectedPassword, password: undefined } : item))
     return null
   },
 
   recoverPassword: async (email) => {
     if (supabaseConfigured && supabase) {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin
-      })
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin })
       return error?.message ?? null
     }
-
-    const found = getLocalUsers().find(
-      (item) => item.email.toLowerCase() === email.trim().toLowerCase()
-    )
-    if (!found) return 'E-mail não encontrado.'
-    return 'Modo local: entre em contato com o administrador para redefinir a senha.'
+    return getLocalUsers().some((item) => item.email.toLowerCase() === email.trim().toLowerCase())
+      ? 'Modo local: entre em contato com o administrador para redefinir a senha.'
+      : 'E-mail não encontrado.'
   }
 }))
