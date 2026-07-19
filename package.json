@@ -1,0 +1,84 @@
+{
+  "name": "agendamarketingv-professional",
+  "private": true,
+  "version": "1.0.0-rc.16.6.2",
+  "type": "module",
+  "description": "AgendaMarketingV Enterprise RC16.6.2 - Camada Central de Dados",
+  "author": "Vanderson de Castro",
+  "scripts": {
+    "dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "dev:web": "vite",
+    "build:web": "tsc -b && vite build",
+    "build:win": "npm run build:web && electron-builder --win nsis portable",
+    "preview": "vite preview",
+    "quality:check": "npm run test:data && npm run test:forms && npm run test:crm && npm run test:data-layer && tsc -b && vite build",
+    "license-server": "node services/license-server/server.cjs",
+    "test:data": "node --experimental-strip-types --test tests/dataValidation.test.ts",
+    "test:forms": "node --experimental-strip-types --test tests/formStability.test.ts",
+    "test:crm": "node --experimental-strip-types --test tests/crmRefactor.test.ts",
+    "test:data-layer": "node --experimental-strip-types --test tests/dataLayer.test.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.1.3",
+    "recharts": "^2.15.0",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "electron": "33.4.11",
+    "electron-builder": "25.1.8",
+    "typescript": "~5.7.2",
+    "vite": "^6.0.7",
+    "wait-on": "^8.0.2"
+  },
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "br.com.vanderson.agendamarketingv",
+    "productName": "AgendaMarketingV",
+    "directories": {
+      "output": "releases"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json",
+      "public/icon.ico"
+    ],
+    "win": {
+      "icon": "public/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AgendaMarketingV",
+      "installerLanguages": [
+        "pt_BR"
+      ]
+    },
+    "electronVersion": "33.4.11"
+  }
+}

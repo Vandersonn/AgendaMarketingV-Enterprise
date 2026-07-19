@@ -1,0 +1,29 @@
+﻿# Dependências
+node_modules/
+
+# Builds
+dist/
+dist-web/
+release/
+out/
+
+# Logs
+logs/
+*.log
+
+# Electron / TypeScript
+*.tsbuildinfo
+
+# Ambiente
+.env
+.env.local
+.env.production
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Releases
+releases/
+*.exe
+*.blockmap

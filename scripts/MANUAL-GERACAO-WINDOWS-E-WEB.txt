@@ -1,0 +1,24 @@
+AGENDA MARKETING V ENTERPRISE RC16.4.11
+MANUAL DE GERACAO WINDOWS E WEB
+
+1. Extraia o ZIP inteiro. Nao execute dentro do arquivo compactado.
+2. Prefira uma pasta curta, por exemplo C:\AgendaMarketingV.
+3. Instale uma versao LTS do Node.js com npm.
+4. Execute scripts\GERAR-EXE.bat.
+
+O SCRIPT FAZ AUTOMATICAMENTE
+- Verifica Node.js e npm.
+- Confirma se tsc.cmd, vite.cmd e electron-builder.cmd existem.
+- Remove node_modules incompatível ou incompleta.
+- Executa npm ci --include=dev pelo package-lock.json.
+- Gera a versao Web e os executaveis Windows.
+
+SAIDAS
+- releases\: instalador NSIS e versao portatil.
+- dist-web\: versao pronta para navegadores e servidor Web.
+
+IMPORTANTE
+- O ZIP nao inclui node_modules, pois dependencias copiadas entre Linux, macOS e Windows podem ser incompatíveis.
+- A primeira compilacao precisa de conexao com a internet para instalar as dependencias.
+- Avisos npm warn deprecated nao significam necessariamente falha.
+- Em caso de arquivo bloqueado, feche o aplicativo, VS Code e terminais abertos na pasta.
