@@ -1,0 +1,74 @@
+name: Deploy Supabase
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected GitHub environment
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      confirmation:
+        description: Type DEPLOY to confirm
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy migrations and Edge Functions
+    if: ${{ inputs.confirmation == 'DEPLOY' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ inputs.environment }}
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Verify deployment credentials
+        shell: bash
+        run: |
+          test -n "$SUPABASE_ACCESS_TOKEN"
+          test -n "$SUPABASE_PROJECT_REF"
+          test -n "$SUPABASE_DB_PASSWORD"
+
+      - name: Link project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Verify WhatsApp secrets
+        shell: bash
+        run: |
+          supabase secrets list --project-ref "$SUPABASE_PROJECT_REF" --output json > "$RUNNER_TEMP/supabase-secrets.json"
+          for name in WHATSAPP_ACCESS_TOKEN_CHANNEL_1 WHATSAPP_ACCESS_TOKEN_CHANNEL_2 META_GRAPH_API_VERSION META_APP_SECRET META_WEBHOOK_VERIFY_TOKEN; do
+            jq -e --arg name "$name" 'any(.[]; .name == $name)' "$RUNNER_TEMP/supabase-secrets.json" > /dev/null
+          done
+
+      - name: Apply database migrations
+        run: supabase db push --linked
+
+      - name: Deploy authenticated send function
+        run: supabase functions deploy whatsapp-send --project-ref "$SUPABASE_PROJECT_REF" --use-api
+
+      - name: Deploy signed webhook function
+        run: supabase functions deploy whatsapp-webhook --project-ref "$SUPABASE_PROJECT_REF" --use-api
+
+      - name: Show deployed functions
+        run: supabase functions list --project-ref "$SUPABASE_PROJECT_REF"
