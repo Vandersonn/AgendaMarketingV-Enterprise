@@ -5,6 +5,7 @@ import { CrmRepository, CRM_STORAGE_KEY, type CrmData } from '../src/data/reposi
 import { CURRENT_DATA_SCHEMA_VERSION, DATA_SCHEMA_KEY, migrateLegacyData } from '../src/data/migrations/migrateLegacyData.ts'
 import { buildContactSyncPlan, type ContactBinding, type GoogleContact, type LocalContact } from '../src/lib/googleContactsSync.ts'
 import { createVCard, newVCardContacts, parseVCardContacts } from '../src/lib/vCardContacts.ts'
+import { validatePublicHttpsUrl } from '../src/lib/integrationSecurity.ts'
 
 const empty: CrmData = { clients: [], leads: [], activities: [], proposals: [] }
 
@@ -93,4 +94,14 @@ test('vCard compara agenda do celular com contatos locais e exporta arquivo vál
   assert.match(exported, /BEGIN:VCARD/)
   assert.match(exported, /FN:Nome\\, Teste/)
   assert.match(exported, /EMAIL;TYPE=INTERNET:teste@exemplo.com/)
+})
+
+
+test('integrações aceitam somente endpoints HTTPS públicos sem credenciais na URL', () => {
+  assert.equal(validatePublicHttpsUrl('https://api.exemplo.com/webhook'), 'https://api.exemplo.com/webhook')
+  assert.throws(() => validatePublicHttpsUrl('http://api.exemplo.com'))
+  assert.throws(() => validatePublicHttpsUrl('https://localhost/test'))
+  assert.throws(() => validatePublicHttpsUrl('https://127.0.0.1/test'))
+  assert.throws(() => validatePublicHttpsUrl('https://192.168.1.10/test'))
+  assert.throws(() => validatePublicHttpsUrl('https://usuario:senha@api.exemplo.com/test'))
 })

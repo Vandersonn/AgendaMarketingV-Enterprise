@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { loadLocal, saveLocal } from './storage'
 import { logSystem } from './systemLogStore'
+import { validatePublicHttpsUrl } from './integrationSecurity'
 
 export type IntegrationProvider =
   | 'openai'
@@ -46,7 +47,7 @@ export interface SyncJob {
 interface IntegrationHubState {
   connections: IntegrationConnection[]
   jobs: SyncJob[]
-  addConnection: (data: Omit<IntegrationConnection, 'id' | 'status' | 'lastTestAt' | 'lastError' | 'createdAt' | 'updatedAt'>) => void
+  addConnection: (data: Omit<IntegrationConnection, 'id' | 'status' | 'lastTestAt' | 'lastError' | 'createdAt' | 'updatedAt' | 'apiKey'>) => void
   updateConnection: (connection: IntegrationConnection) => void
   removeConnection: (id: string) => void
   toggleConnection: (id: string) => void
@@ -56,27 +57,31 @@ interface IntegrationHubState {
   clearFinishedJobs: () => void
 }
 
-const saved = loadLocal<{ connections: IntegrationConnection[]; jobs: SyncJob[] }>('integration_hub', {
+const rawSaved = loadLocal<{ connections: IntegrationConnection[]; jobs: SyncJob[] }>('integration_hub', {
   connections: [],
   jobs: []
 })
-
-function persist(connections: IntegrationConnection[], jobs: SyncJob[]) {
-  saveLocal('integration_hub', { connections, jobs })
+const saved = {
+  connections: rawSaved.connections.map((connection) => ({
+    ...connection,
+    authType: connection.authType === 'oauth' ? 'oauth' as const : 'none' as const,
+    apiKey: ''
+  })),
+  jobs: rawSaved.jobs
+}
+if (rawSaved.connections.some((connection) => Boolean(connection.apiKey) || !['none', 'oauth'].includes(connection.authType))) {
+  saveLocal('integration_hub', saved)
 }
 
-function requestHeaders(connection: IntegrationConnection): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+function persist(connections: IntegrationConnection[], jobs: SyncJob[]) {
+  saveLocal('integration_hub', {
+    connections: connections.map((connection) => ({ ...connection, apiKey: '' })),
+    jobs
+  })
+}
 
-  if (connection.authType === 'bearer' && connection.apiKey) {
-    headers.Authorization = `Bearer ${connection.apiKey}`
-  }
-
-  if (connection.authType === 'api_key' && connection.apiKey) {
-    headers['X-API-Key'] = connection.apiKey
-  }
-
-  return headers
+function requestHeaders(): Record<string, string> {
+  return { 'Content-Type': 'application/json' }
 }
 
 export const useIntegrationHubStore = create<IntegrationHubState>((set, get) => ({
@@ -86,6 +91,8 @@ export const useIntegrationHubStore = create<IntegrationHubState>((set, get) => 
     const now = new Date().toISOString()
     const connection: IntegrationConnection = {
       ...data,
+      endpoint: validatePublicHttpsUrl(data.endpoint),
+      apiKey: '',
       id: crypto.randomUUID(),
       status: data.endpoint ? 'configured' : 'disconnected',
       lastTestAt: '',
@@ -101,7 +108,7 @@ export const useIntegrationHubStore = create<IntegrationHubState>((set, get) => 
   updateConnection: (connection) => set((state) => {
     const connections = state.connections.map((item) =>
       item.id === connection.id
-        ? { ...connection, updatedAt: new Date().toISOString() }
+        ? { ...connection, endpoint: validatePublicHttpsUrl(connection.endpoint), apiKey: '', updatedAt: new Date().toISOString() }
         : item
     )
     persist(connections, state.jobs)
@@ -127,14 +134,16 @@ export const useIntegrationHubStore = create<IntegrationHubState>((set, get) => 
     const connection = get().connections.find((item) => item.id === id)
     if (!connection) return 'Integração não encontrada.'
     if (!connection.endpoint) return 'Informe um endpoint válido.'
+    let endpoint: string
+    try { endpoint = validatePublicHttpsUrl(connection.endpoint) } catch (error) { return error instanceof Error ? error.message : String(error) }
 
     const controller = new AbortController()
     const timer = window.setTimeout(() => controller.abort(), Math.max(3, connection.timeoutSeconds) * 1000)
 
     try {
-      const response = await fetch(connection.endpoint, {
+      const response = await fetch(endpoint, {
         method: 'POST',
-        headers: requestHeaders(connection),
+        headers: requestHeaders(),
         body: JSON.stringify({
           source: 'AgendaMarketingV',
           event: 'connection.test',
@@ -203,6 +212,8 @@ export const useIntegrationHubStore = create<IntegrationHubState>((set, get) => 
     if (!connection) return 'Integração do job não encontrada.'
     if (!connection.enabled) return 'Integração desativada.'
     if (!connection.endpoint) return 'Endpoint não configurado.'
+    let endpoint: string
+    try { endpoint = validatePublicHttpsUrl(connection.endpoint) } catch (error) { return error instanceof Error ? error.message : String(error) }
 
     const running = get().jobs.map((item) =>
       item.id === id
@@ -216,9 +227,9 @@ export const useIntegrationHubStore = create<IntegrationHubState>((set, get) => 
     const timer = window.setTimeout(() => controller.abort(), Math.max(3, connection.timeoutSeconds) * 1000)
 
     try {
-      const response = await fetch(connection.endpoint, {
+      const response = await fetch(endpoint, {
         method: 'POST',
-        headers: requestHeaders(connection),
+        headers: requestHeaders(),
         body: JSON.stringify({
           source: 'AgendaMarketingV',
           action: job.action,
