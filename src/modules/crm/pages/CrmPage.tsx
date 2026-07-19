@@ -223,7 +223,7 @@ export function CrmPage() {
     createCampaign({ ...campaignForm, leadIds: selectedCampaignLeads })
     setCampaignOpen(false)
     setSelectedCampaignLeads([])
-    setCampaignForm({ name: '', channel: 'whatsapp', message: 'Olá, {nome}! Tudo bem? Gostaria de conversar sobre uma solução para {empresa}.', dailyLimit: 40, intervalMinutes: 15 })
+    setCampaignForm({ name: '', channel: 'whatsapp', whatsappChannelId: 'channel-1', message: 'Olá, {nome}! Tudo bem? Gostaria de conversar sobre uma solução para {empresa}.', dailyLimit: 40, intervalMinutes: 15 })
     navigate('/contact-campaigns')
   }
 
