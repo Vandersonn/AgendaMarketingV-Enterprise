@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AddressBook, Download, RefreshCw, Upload } from 'lucide-react'
+import { UsersRound, Download, RefreshCw, Upload } from 'lucide-react'
 import { Button } from '../../../components/Button'
 import { useCloudProvidersStore } from '../../../lib/cloudProvidersStore'
 import { useCrmStore } from '../../../lib/crmStore'
@@ -117,7 +117,7 @@ export function ContactsSyncPage() {
         <h1>Google, celular, WhatsApp e Telegram</h1>
         <p>Google Contatos funciona como central. O celular recebe os contatos pela conta Google.</p>
       </div>
-      <Button variant="secondary" onClick={() => run(reconnect)} disabled={running}><AddressBook size={17}/> Conectar Google Contatos</Button>
+      <Button variant="secondary" onClick={() => run(reconnect)} disabled={running}><UsersRound size={17}/> Conectar Google Contatos</Button>
     </header>
 
     {message && <div className="form-message success">{message}</div>}
@@ -153,7 +153,7 @@ export function ContactsSyncPage() {
     </section>
 
     <article className="panel-card cloud-security-note">
-      <AddressBook/><div><strong>WhatsApp e Telegram</strong><p>O sistema usa o telefone sincronizado para os canais. A agenda pessoal do WhatsApp não é importada e o Telegram só fornece contatos compartilhados com autorização.</p></div>
+      <UsersRound/><div><strong>WhatsApp e Telegram</strong><p>O sistema usa o telefone sincronizado para os canais. A agenda pessoal do WhatsApp não é importada e o Telegram só fornece contatos compartilhados com autorização.</p></div>
     </article>
   </div>
 }
