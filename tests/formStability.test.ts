@@ -46,3 +46,12 @@ test('cadastros críticos definem o campo inicial de foco pelo nome estável', (
   assert.match(crm, /initialFocusSelector="input\[name=\'name\'\]"/)
   assert.match(clients, /initialFocusSelector="input\[name=\'name\'\]"/)
 })
+
+test('Electron restringe URLs e arquivos recebidos pelo renderer', () => {
+  const main = read('electron/main.cjs')
+  assert.match(main, /allowedExternalProtocols/)
+  assert.match(main, /normalizeExternalUrl\(url\)/)
+  assert.match(main, /assertAuthorizedCloudFile\(filePath\)/)
+  assert.match(main, /will-navigate/)
+  assert.doesNotMatch(main, /system:openExternal', \(_event, url\) => shell\.openExternal\(url\)/)
+})
