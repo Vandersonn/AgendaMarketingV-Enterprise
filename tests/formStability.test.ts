@@ -66,3 +66,16 @@ test('WhatsApp oferece exatamente dois canais locais sem exportar dados', () => 
   assert.doesNotMatch(store, /apiKey|accessToken/)
   assert.doesNotMatch(page, /fetch\(/)
 })
+
+
+test('WhatsApp contacts validate availability before recording activity', () => {
+  const crmPage = readFileSync(join(process.cwd(), 'src/modules/crm/pages/CrmPage.tsx'), 'utf8')
+  const campaignsPage = readFileSync(join(process.cwd(), 'src/modules/crm/pages/ContactCampaignsPage.tsx'), 'utf8')
+  const whatsappPage = readFileSync(join(process.cwd(), 'src/modules/marketing/pages/WhatsAppPage.tsx'), 'utf8')
+  assert.match(crmPage, /Este Lead não possui WhatsApp ou telefone/)
+  assert.ok(crmPage.indexOf("if (type === 'whatsapp')") < crmPage.indexOf('if (registerActivity)'))
+  assert.match(crmPage, /whatsappChannel\.enabled/)
+  assert.match(crmPage, /assignWhatsAppContact/)
+  assert.match(campaignsPage, /canal de WhatsApp desta campanha está desativado/)
+  assert.match(whatsappPage, /canal selecionado está desativado/)
+})
