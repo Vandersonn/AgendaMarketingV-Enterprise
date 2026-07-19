@@ -6,6 +6,8 @@ export interface WhatsAppBusinessChannel {
   name: string
   phoneNumber: string
   purpose: string
+  businessAccountId: string
+  phoneNumberId: string
   enabled: boolean
 }
 
@@ -17,8 +19,8 @@ interface WhatsAppBusinessState {
 }
 
 const defaults: [WhatsAppBusinessChannel, WhatsAppBusinessChannel] = [
-  { id: 'channel-1', name: 'WhatsApp Comercial', phoneNumber: '', purpose: 'Vendas e novos Leads', enabled: true },
-  { id: 'channel-2', name: 'WhatsApp Atendimento', phoneNumber: '', purpose: 'Clientes e suporte', enabled: true }
+  { id: 'channel-1', name: 'WhatsApp Comercial', phoneNumber: '', purpose: 'Vendas e novos Leads', businessAccountId: '', phoneNumberId: '', enabled: true },
+  { id: 'channel-2', name: 'WhatsApp Atendimento', phoneNumber: '', purpose: 'Clientes e suporte', businessAccountId: '', phoneNumberId: '', enabled: true }
 ]
 
 const saved = loadLocal<WhatsAppBusinessChannel[]>('whatsapp_business_channels', defaults)
