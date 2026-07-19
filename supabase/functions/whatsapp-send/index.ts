@@ -34,29 +34,31 @@ Deno.serve(async (request) => {
     if (authError || !authData.user) return response(401, { error: 'Sessão inválida.' })
 
     const body = await request.json()
+    const requestId = String(body?.requestId || '')
     const organizationId = String(body?.organizationId || '')
     const channelId = String(body?.channelId || '')
     const contactKey = String(body?.contactKey || '').trim()
     const recipient = String(body?.to || '').replace(/\D/g, '')
     const text = String(body?.text || '').trim()
 
-    if (!/^[0-9a-f-]{36}$/i.test(organizationId) || !/^[0-9a-f-]{36}$/i.test(channelId)) {
-      return response(400, { error: 'Organização ou canal inválido.' })
+    if (!/^[0-9a-f-]{36}$/i.test(requestId) || !/^[0-9a-f-]{36}$/i.test(organizationId) || !/^[0-9a-f-]{36}$/i.test(channelId)) {
+      return response(400, { error: 'Identificador, organização ou canal inválido.' })
     }
     if (!contactKey || recipient.length < 8 || recipient.length > 15 || !text || text.length > 4096) {
       return response(400, { error: 'Contato, destinatário ou mensagem inválidos.' })
     }
 
-    const { data: membership } = await adminClient
+    const { data: membership, error: membershipError } = await adminClient
       .from('organization_members')
       .select('role')
       .eq('organization_id', organizationId)
       .eq('user_id', authData.user.id)
       .eq('active', true)
       .maybeSingle()
+    if (membershipError) throw new Error('Falha ao validar associação à organização.')
     if (!membership) return response(403, { error: 'Usuário sem acesso à organização.' })
 
-    const { data: consent } = await adminClient
+    const { data: consent, error: consentError } = await adminClient
       .from('contact_communication_consents')
       .select('id')
       .eq('organization_id', organizationId)
@@ -64,14 +66,16 @@ Deno.serve(async (request) => {
       .is('revoked_at', null)
       .not('granted_at', 'is', null)
       .maybeSingle()
+    if (consentError) throw new Error('Falha ao validar consentimento do contato.')
     if (!consent) return response(409, { error: 'Consentimento ativo não encontrado para este contato.' })
 
-    const { data: channel } = await adminClient
+    const { data: channel, error: channelError } = await adminClient
       .from('whatsapp_business_channels')
       .select('id, channel_key, phone_number_id, enabled')
       .eq('id', channelId)
       .eq('organization_id', organizationId)
       .maybeSingle()
+    if (channelError) throw new Error('Falha ao validar canal do WhatsApp.')
     if (!channel?.enabled || !channel.phone_number_id) {
       return response(409, { error: 'Canal de WhatsApp inativo ou incompleto.' })
     }
@@ -87,9 +91,19 @@ Deno.serve(async (request) => {
     if (!/^v\d+\.\d+$/.test(graphVersion)) throw new Error('META_GRAPH_API_VERSION inválida.')
     const accessToken = requiredEnv(tokenName)
 
+    const { data: previous, error: previousError } = await adminClient
+      .from('whatsapp_message_deliveries')
+      .select('id, provider_message_id, status')
+      .eq('organization_id', organizationId)
+      .eq('request_id', requestId)
+      .maybeSingle()
+    if (previousError) throw new Error('Falha ao verificar idempotência do envio.')
+    if (previous) return response(200, { ok: true, duplicate: true, deliveryId: previous.id, providerMessageId: previous.provider_message_id, status: previous.status })
+
     const { data: delivery, error: logError } = await adminClient
       .from('whatsapp_message_deliveries')
       .insert({
+        request_id: requestId,
         organization_id: organizationId,
         channel_id: channel.id,
         contact_key: contactKey,
@@ -119,7 +133,7 @@ Deno.serve(async (request) => {
     const providerBody = await providerResponse.json().catch(() => ({}))
     const providerMessageId = providerBody?.messages?.[0]?.id || null
 
-    await adminClient
+    const { error: updateError } = await adminClient
       .from('whatsapp_message_deliveries')
       .update({
         provider_message_id: providerMessageId,
@@ -129,6 +143,7 @@ Deno.serve(async (request) => {
         updated_at: new Date().toISOString()
       })
       .eq('id', delivery.id)
+    if (updateError) throw new Error('A mensagem foi processada pelo provedor, mas o status não pôde ser persistido.')
 
     if (!providerResponse.ok) return response(502, { error: 'A Meta recusou a mensagem.', deliveryId: delivery.id })
     return response(202, { ok: true, deliveryId: delivery.id, providerMessageId })
