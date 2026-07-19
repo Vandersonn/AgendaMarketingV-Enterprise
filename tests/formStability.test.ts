@@ -181,3 +181,13 @@ test('integrações não persistem segredos e Google exige armazenamento criptog
   assert.match(cloudPage, /DRIVE E PEOPLE API/)
   assert.match(cloudPage, /Lista de arquivos atualizada/)
 })
+
+
+test('central de sincronização não simula transmissão de dados', () => {
+  const page = read('src/modules/integrations/pages/CloudSyncPage.tsx')
+  assert.match(page, /Sem sincronização simulada/)
+  assert.match(page, /navigate\('\/cloud-connect'\)/)
+  assert.match(page, /navigate\('\/contacts-sync'\)/)
+  assert.doesNotMatch(page, /useCloudSyncStore|setEndpoint|enqueue\(|process\(/)
+  assert.doesNotMatch(page, /api\.seudominio\.com/)
+})
