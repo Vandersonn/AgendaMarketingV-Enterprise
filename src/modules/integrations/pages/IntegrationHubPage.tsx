@@ -38,7 +38,6 @@ export function IntegrationHubPage() {
     name: '',
     endpoint: '',
     authType: 'none' as IntegrationConnection['authType'],
-    apiKey: '',
     enabled: true,
     timeoutSeconds: 15
   })
@@ -52,12 +51,17 @@ export function IntegrationHubPage() {
 
   function submit(event: React.FormEvent) {
     event.preventDefault()
-    addConnection(form)
-    setOpen(false)
-    setForm({
-      provider: 'custom', name: '', endpoint: '', authType: 'none',
-      apiKey: '', enabled: true, timeoutSeconds: 15
-    })
+    try {
+      addConnection(form)
+      setOpen(false)
+      setMessage('Integração configurada sem armazenar segredos no desktop.')
+      setForm({
+        provider: 'custom', name: '', endpoint: '', authType: 'none',
+        enabled: true, timeoutSeconds: 15
+      })
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error))
+    }
   }
 
   async function test(id: string) {
@@ -85,7 +89,7 @@ export function IntegrationHubPage() {
         <div>
           <span className="eyebrow">INTEGRAÇÕES SEGURAS</span>
           <h1>Hub de conexões</h1>
-          <p>Configure endpoints, valide conexões e acompanhe sincronizações.</p>
+          <p>Configure endpoints HTTPS públicos. Tokens e chaves devem permanecer no backend.</p>
         </div>
         <Button onClick={() => setOpen(true)}><Plus size={18} /> Nova conexão</Button>
       </header>
@@ -196,13 +200,10 @@ export function IntegrationHubPage() {
           <label>Autenticação
             <select value={form.authType} onChange={(event) => setForm((current) => ({ ...current, authType: event.target.value as IntegrationConnection['authType'] }))}>
               <option value="none">Sem autenticação</option>
-              <option value="bearer">Bearer Token</option>
-              <option value="api_key">X-API-Key</option>
-              <option value="oauth">OAuth via backend</option>
+              <option value="oauth">OAuth via backend seguro</option>
             </select>
           </label>
           <label>Timeout<input type="number" min="3" max="120" value={form.timeoutSeconds} onChange={(event) => setForm((current) => ({ ...current, timeoutSeconds: Number(event.target.value) }))} /></label>
-          <label className="full">Token ou chave<input type="password" value={form.apiKey} onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))} placeholder="Evite salvar segredos no desktop em produção" /></label>
           <label className="checkbox-label"><input type="checkbox" checked={form.enabled} onChange={(event) => setForm((current) => ({ ...current, enabled: event.target.checked }))} /> Ativar conexão</label>
           <Button className="full">Salvar conexão</Button>
         </form>
