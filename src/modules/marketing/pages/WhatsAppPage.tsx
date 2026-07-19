@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ExternalLink, MessageCircle, Save } from 'lucide-react'
 import { Button } from '../../../components/Button'
 import { useCrmStore } from '../../../lib/crmStore'
@@ -6,13 +6,18 @@ import { useWhatsAppBusinessStore } from '../../../lib/whatsappBusinessStore'
 
 export function WhatsAppPage() {
   const clients = useCrmStore((state) => state.clients)
-  const { channels, updateChannel } = useWhatsAppBusinessStore()
+  const { channels, assignments, updateChannel, assignContact } = useWhatsAppBusinessStore()
   const [clientId, setClientId] = useState(clients[0]?.id ?? '')
   const [channelId, setChannelId] = useState(channels[0].id)
   const [message, setMessage] = useState('Olá! Tudo bem? Estou entrando em contato pela AgendaMarketingV.')
   const [status, setStatus] = useState('')
 
   const selected = useMemo(() => clients.find((item) => item.id === clientId), [clients, clientId])
+  useEffect(() => {
+    if (!clientId) return
+    setChannelId(assignments[`client:${clientId}`] || 'channel-1')
+  }, [assignments, clientId])
+
   const channel = channels.find((item) => item.id === channelId) || channels[0]
 
   function openWhatsApp() {
@@ -42,7 +47,7 @@ export function WhatsAppPage() {
       <article className="panel-card whatsapp-form-card">
         <div className="whatsapp-icon"><MessageCircle size={30}/></div>
         <form className="form-grid" onSubmit={(event) => event.preventDefault()}>
-          <label className="full">Canal de saída<select value={channelId} onChange={(event) => setChannelId(event.target.value as typeof channelId)}>
+          <label className="full">Canal de saída<select value={channelId} onChange={(event) => { const id = event.target.value as typeof channelId; setChannelId(id); if (clientId) assignContact(`client:${clientId}`, id) }}>
             {channels.filter((item) => item.enabled).map((item) => <option key={item.id} value={item.id}>{item.name} — {item.phoneNumber || 'configurar número'}</option>)}
           </select></label>
           <label className="full">Cliente<select value={clientId} onChange={(event) => setClientId(event.target.value)}><option value="">Selecione</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name} — {client.phone}</option>)}</select></label>
