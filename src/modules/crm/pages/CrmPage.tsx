@@ -72,7 +72,9 @@ export function CrmPage() {
 
   function openLeadCommunication(lead: Lead) {
     setCommunicationLead(lead)
-    setWhatsappChannelId(whatsappAssignments[`lead:${lead.id}`] || 'channel-1')
+    const assigned = whatsappAssignments[`lead:${lead.id}`]
+    const available = whatsappChannels.find((channel) => channel.id === assigned && channel.enabled) || whatsappChannels.find((channel) => channel.enabled) || whatsappChannels[0]
+    setWhatsappChannelId(available.id)
   }
 
   function updateCommunicationLead(patch: Partial<Lead>) {
@@ -85,6 +87,28 @@ export function CrmPage() {
   function executeContact(type: 'whatsapp' | 'email' | 'call', registerActivity = true) {
     if (!communicationLead) return
     const whatsappChannel = whatsappChannels.find((channel) => channel.id === whatsappChannelId) || whatsappChannels[0]
+    const phone = (communicationLead.whatsapp || communicationLead.phone).replace(/\D/g, '')
+
+    if (type === 'whatsapp') {
+      if (!phone) {
+        setStatusMessage({ message: 'Este Lead não possui WhatsApp ou telefone.', tone: 'warning' })
+        return
+      }
+      if (!whatsappChannel.enabled) {
+        setStatusMessage({ message: 'O canal de WhatsApp selecionado está desativado.', tone: 'warning' })
+        return
+      }
+      assignWhatsAppContact(`lead:${communicationLead.id}`, whatsappChannel.id)
+    }
+    if (type === 'email' && !communicationLead.email) {
+      setStatusMessage({ message: 'Este Lead não possui e-mail.', tone: 'warning' })
+      return
+    }
+    if (type === 'call' && !communicationLead.phone) {
+      setStatusMessage({ message: 'Este Lead não possui telefone.', tone: 'warning' })
+      return
+    }
+
     if (registerActivity) {
       const now = new Date().toISOString()
       addActivity({
@@ -96,10 +120,9 @@ export function CrmPage() {
       })
       updateCommunicationLead({ lastContactAt: now, contactCount: (communicationLead.contactCount || 0) + 1 })
     }
-    const phone = (communicationLead.whatsapp || communicationLead.phone).replace(/\D/g, '')
-    if (type === 'whatsapp' && phone) window.open(`https://wa.me/55${phone.replace(/^55/, '')}`, '_blank', 'noopener,noreferrer')
-    if (type === 'email' && communicationLead.email) window.location.href = `mailto:${communicationLead.email}`
-    if (type === 'call' && communicationLead.phone) window.location.href = `tel:${communicationLead.phone.replace(/\D/g, '')}`
+    if (type === 'whatsapp') window.open(`https://wa.me/55${phone.replace(/^55/, '')}`, '_blank', 'noopener,noreferrer')
+    if (type === 'email') window.location.href = `mailto:${communicationLead.email}`
+    if (type === 'call') window.location.href = `tel:${communicationLead.phone.replace(/\D/g, '')}`
     setContactNote('')
   }
 
@@ -227,6 +250,10 @@ export function CrmPage() {
   function saveCampaign(event: React.FormEvent) {
     event.preventDefault()
     if (!selectedCampaignLeads.length) return
+    if (campaignForm.channel === 'whatsapp' && !whatsappChannels.some((channel) => channel.id === campaignForm.whatsappChannelId && channel.enabled)) {
+      setStatusMessage({ message: 'Ative um canal de WhatsApp antes de criar a campanha.', tone: 'warning' })
+      return
+    }
     createCampaign({ ...campaignForm, leadIds: selectedCampaignLeads })
     setCampaignOpen(false)
     setSelectedCampaignLeads([])
