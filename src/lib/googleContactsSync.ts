@@ -1,4 +1,5 @@
 import type { Client, Lead } from './crmTypes'
+import { loadLocal, saveLocal } from './storage'
 
 export interface GoogleContact {
   resourceName: string
@@ -17,6 +18,13 @@ export interface LocalContact {
   email: string
   phone: string
   company: string
+}
+
+export interface ContactBinding {
+  resourceName: string
+  localType: LocalContact['type']
+  localId: string
+  linkedAt: string
 }
 
 export interface ContactSyncPlan {
@@ -54,7 +62,40 @@ export function collectLocalContacts(clients: Client[], leads: Lead[]): LocalCon
   })
 }
 
-export function buildContactSyncPlan(googleContacts: GoogleContact[], localContacts: LocalContact[]): ContactSyncPlan {
+export function loadContactBindings(): ContactBinding[] {
+  return loadLocal<ContactBinding[]>('google_contact_bindings', [])
+}
+
+export function saveContactBindings(bindings: ContactBinding[]): void {
+  saveLocal('google_contact_bindings', bindings)
+}
+
+export function mergeContactBindings(
+  current: ContactBinding[],
+  matched: ContactSyncPlan['matched']
+): ContactBinding[] {
+  const byResource = new Map(current.map((binding) => [binding.resourceName, binding]))
+  matched.forEach(({ google, local }) => {
+    byResource.set(google.resourceName, {
+      resourceName: google.resourceName,
+      localType: local.type,
+      localId: local.id,
+      linkedAt: byResource.get(google.resourceName)?.linkedAt || new Date().toISOString()
+    })
+  })
+  return [...byResource.values()]
+}
+
+export function buildContactSyncPlan(
+  googleContacts: GoogleContact[],
+  localContacts: LocalContact[],
+  bindings: ContactBinding[] = []
+): ContactSyncPlan {
+  const localById = new Map(localContacts.map((contact) => [`${contact.type}:${contact.id}`, contact]))
+  const bindingByResource = new Map(bindings.map((binding) => [
+    binding.resourceName,
+    localById.get(`${binding.localType}:${binding.localId}`)
+  ]))
   const localIndex = new Map<string, LocalContact>()
   localContacts.forEach((contact) => identities(contact).forEach((key) => localIndex.set(key, contact)))
 
@@ -63,7 +104,8 @@ export function buildContactSyncPlan(googleContacts: GoogleContact[], localConta
   const googleOnly: GoogleContact[] = []
 
   googleContacts.forEach((google) => {
-    const local = identities(google).map((key) => localIndex.get(key)).find(Boolean)
+    const local = bindingByResource.get(google.resourceName)
+      || identities(google).map((key) => localIndex.get(key)).find(Boolean)
     if (!local) {
       googleOnly.push(google)
       return
