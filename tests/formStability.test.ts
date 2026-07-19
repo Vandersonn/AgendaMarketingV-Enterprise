@@ -149,3 +149,17 @@ test('webhook do WhatsApp valida assinatura e processa eventos idempotentes', ()
   assert.match(webhook, /whatsapp_inbound_messages/)
   assert.ok(webhook.indexOf('constantTimeEqual(supplied, expected)') < webhook.indexOf("JSON.parse(rawBody)"))
 })
+
+
+test('sincronização do celular usa vCard sem presumir consentimento', () => {
+  const parser = read('src/lib/vCardContacts.ts')
+  const page = read('src/modules/integrations/pages/ContactsSyncPage.tsx')
+  assert.match(parser, /parseVCardContacts/)
+  assert.match(parser, /newVCardContacts/)
+  assert.match(parser, /createVCard/)
+  assert.match(page, /accept=".vcf,text\/vcard,text\/x-vcard"/)
+  assert.match(page, /Agenda do celular \(vCard\)/)
+  assert.match(page, /consentStatus: 'unknown'/)
+  assert.match(page, /10 \* 1024 \* 1024/)
+  assert.doesNotMatch(page, /deletePhoneContact|navigator\.contacts/)
+})
