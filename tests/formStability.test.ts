@@ -58,6 +58,8 @@ test('WhatsApp oferece exatamente dois canais locais sem exportar dados', () => 
   assert.match(store, /assignContact/)
   assert.match(store, /businessAccountId/)
   assert.match(store, /phoneNumberId/)
+  assert.match(store, /validateWhatsAppChannels/)
+  assert.match(page, /warnings\[item\.id\]/)
   assert.match(crm, /whatsappChannelId/)
   assert.match(page, /Canal de saída/)
   assert.match(campaigns, /whatsappChannelId/)
