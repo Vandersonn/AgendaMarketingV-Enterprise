@@ -148,3 +148,12 @@ Execute `scripts/GERAR-EXE.bat`. Em caso de falha, consulte `logs/compilacao-win
 
 ## Qualidade RC16.6.1
 Execute `npm run quality:check` para validar regras de dados, TypeScript e o build web.
+
+
+## Hardening de produção
+
+O servidor de licenças usa PostgreSQL/Supabase e não inicia sem `ADMIN_TOKEN`, `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`. Aplique a migration `202607190006_security_hardening.sql` antes de iniciar o serviço.
+
+Envios pela Edge Function `whatsapp-send` exigem um `requestId` UUID estável por tentativa. Reutilize o mesmo UUID em retries para impedir mensagens duplicadas.
+
+Os testes de integração usam `SUPABASE_TEST_URL` e `SUPABASE_TEST_SERVICE_ROLE_KEY`. Sem essas variáveis, são ignorados com segurança; no ambiente de staging, configure-as para validar transações reais.
