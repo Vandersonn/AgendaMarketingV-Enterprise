@@ -11,6 +11,22 @@ export interface WhatsAppBusinessChannel {
   enabled: boolean
 }
 
+export function validateWhatsAppChannels(channels: WhatsAppBusinessChannel[]): Record<string, string[]> {
+  const warnings: Record<string, string[]> = Object.fromEntries(channels.map((channel) => [channel.id, []]))
+  const normalizedPhones = channels.map((channel) => channel.phoneNumber.replace(/\D/g, ''))
+
+  channels.forEach((channel, index) => {
+    if (channel.enabled && !normalizedPhones[index]) warnings[channel.id].push('Informe o número deste canal ativo.')
+    if (Boolean(channel.businessAccountId) !== Boolean(channel.phoneNumberId)) {
+      warnings[channel.id].push('Preencha os dois IDs da Meta ou deixe ambos vazios.')
+    }
+    if (normalizedPhones[index] && normalizedPhones.some((phone, other) => other !== index && phone === normalizedPhones[index])) {
+      warnings[channel.id].push('Este número também está configurado no outro canal.')
+    }
+  })
+  return warnings
+}
+
 interface WhatsAppBusinessState {
   channels: [WhatsAppBusinessChannel, WhatsAppBusinessChannel]
   assignments: Record<string, WhatsAppBusinessChannel['id']>
