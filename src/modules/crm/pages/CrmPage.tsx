@@ -41,7 +41,7 @@ export function CrmPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [discardLeadOpen, setDiscardLeadOpen] = useState(false)
-  const [campaignForm, setCampaignForm] = useState({ name: '', channel: 'whatsapp' as CampaignChannel, message: 'Olá, {nome}! Tudo bem? Gostaria de conversar sobre uma solução para {empresa}.', dailyLimit: 40, intervalMinutes: 15 })
+  const [campaignForm, setCampaignForm] = useState({ name: '', channel: 'whatsapp' as CampaignChannel, whatsappChannelId: 'channel-1' as 'channel-1' | 'channel-2', message: 'Olá, {nome}! Tudo bem? Gostaria de conversar sobre uma solução para {empresa}.', dailyLimit: 40, intervalMinutes: 15 })
   const createCampaign = useContactCampaignStore((state) => state.createCampaign)
   const navigate = useNavigate()
   const slaLimits = useCommercialSlaStore((state) => state.limits)
@@ -312,6 +312,7 @@ export function CrmPage() {
           <div className="form-grid">
             <label>Nome da campanha<input required value={campaignForm.name} onChange={(event) => setCampaignForm({ ...campaignForm, name: event.target.value })} placeholder="Ex.: Retorno de propostas" /></label>
             <label>Canal<select value={campaignForm.channel} onChange={(event) => setCampaignForm({ ...campaignForm, channel: event.target.value as CampaignChannel })}><option value="whatsapp">WhatsApp</option><option value="email">E-mail</option><option value="call">Ligação</option></select></label>
+            {campaignForm.channel === 'whatsapp' && <label>Número do WhatsApp<select value={campaignForm.whatsappChannelId} onChange={(event) => setCampaignForm({ ...campaignForm, whatsappChannelId: event.target.value as 'channel-1' | 'channel-2' })}>{whatsappChannels.filter((item) => item.enabled).map((item) => <option key={item.id} value={item.id}>{item.name} — {item.phoneNumber || 'configurar número'}</option>)}</select></label>}
             <label>Limite diário<input type="number" min="1" max="500" value={campaignForm.dailyLimit} onChange={(event) => setCampaignForm({ ...campaignForm, dailyLimit: Number(event.target.value) })} /></label>
             <label>Intervalo recomendado (min)<input type="number" min="1" value={campaignForm.intervalMinutes} onChange={(event) => setCampaignForm({ ...campaignForm, intervalMinutes: Number(event.target.value) })} /></label>
           </div>
