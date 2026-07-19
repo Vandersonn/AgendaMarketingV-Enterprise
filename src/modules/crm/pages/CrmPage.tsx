@@ -14,6 +14,7 @@ import { useCommercialSlaStore } from '../../../lib/commercialSlaStore'
 import { normalizeText } from '../../../lib/dataValidation'
 import { LeadFormModal } from '../../../features/crm/LeadFormModal'
 import { LeadKanbanBoard, leadStages } from '../../../features/crm/LeadKanbanBoard'
+import { useWhatsAppBusinessStore } from '../../../lib/whatsappBusinessStore'
 import { emptyLeadForm, findDuplicateLead, leadFormFromSubmit, validateLeadForm } from '../../../features/crm/leadFormModel'
 
 function activitiesForLead(leadId: string, activities: ReturnType<typeof useCrmStore.getState>['activities']) {
@@ -30,6 +31,8 @@ export function CrmPage() {
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [communicationLead, setCommunicationLead] = useState<Lead | null>(null)
   const [contactNote, setContactNote] = useState('')
+  const whatsappChannels = useWhatsAppBusinessStore((state) => state.channels)
+  const [whatsappChannelId, setWhatsappChannelId] = useState<'channel-1' | 'channel-2'>('channel-1')
   const [selectedLost, setSelectedLost] = useState<string[]>([])
   const [selectedCampaignLeads, setSelectedCampaignLeads] = useState<string[]>([])
   const [campaignOpen, setCampaignOpen] = useState(false)
@@ -74,13 +77,14 @@ export function CrmPage() {
 
   function executeContact(type: 'whatsapp' | 'email' | 'call', registerActivity = true) {
     if (!communicationLead) return
+    const whatsappChannel = whatsappChannels.find((channel) => channel.id === whatsappChannelId) || whatsappChannels[0]
     if (registerActivity) {
       const now = new Date().toISOString()
       addActivity({
         leadId: communicationLead.id,
         type,
-        title: type === 'whatsapp' ? 'Contato pelo WhatsApp' : type === 'email' ? 'Contato por e-mail' : 'Ligação realizada',
-        description: contactNote || 'Contato iniciado diretamente pelo Kanban.',
+        title: type === 'whatsapp' ? `Contato pelo WhatsApp • ${whatsappChannel.name}` : type === 'email' ? 'Contato por e-mail' : 'Ligação realizada',
+        description: type === 'whatsapp' ? `${contactNote || 'Contato iniciado diretamente pelo Kanban.'} Canal: ${whatsappChannel.name} (${whatsappChannel.phoneNumber || 'número não configurado'}).` : contactNote || 'Contato iniciado diretamente pelo Kanban.',
         date: now
       })
       updateCommunicationLead({ lastContactAt: now, contactCount: (communicationLead.contactCount || 0) + 1 })
@@ -342,6 +346,12 @@ export function CrmPage() {
               <label>Origem do consentimento<input value={communicationLead.consentSource || ''} onChange={(event) => updateCommunicationLead({ consentSource: event.target.value })} placeholder="Formulário, contrato, evento..." /></label>
               <label className="suppression-check"><input type="checkbox" checked={Boolean(communicationLead.doNotContact)} onChange={(event) => updateCommunicationLead({ doNotContact: event.target.checked, consentStatus: event.target.checked ? 'revoked' : communicationLead.consentStatus })} /> Não entrar em contato</label>
             </div>
+
+            <label>Canal do WhatsApp
+              <select value={whatsappChannelId} onChange={(event) => setWhatsappChannelId(event.target.value as 'channel-1' | 'channel-2')}>
+                {whatsappChannels.filter((channel) => channel.enabled).map((channel) => <option key={channel.id} value={channel.id}>{channel.name} — {channel.phoneNumber || 'configurar número'}</option>)}
+              </select>
+            </label>
 
             <label className="contact-note">Observação do contato<textarea value={contactNote} onChange={(event) => setContactNote(event.target.value)} placeholder="Contexto, assunto ou resultado da conversa" /></label>
 
