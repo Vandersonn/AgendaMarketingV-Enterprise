@@ -376,7 +376,8 @@ ipcMain.handle('google:contacts:list', async (_event, clientId) => {
         name: person.names?.[0]?.displayName || '',
         email: person.emailAddresses?.[0]?.value || '',
         phone: person.phoneNumbers?.[0]?.value || '',
-        company: person.organizations?.[0]?.name || ''
+        company: person.organizations?.[0]?.name || '',
+        sources: person.metadata?.sources || []
       })
     }
     pageToken = data.nextPageToken || ''
@@ -402,6 +403,34 @@ ipcMain.handle('google:contacts:create', async (_event, payload) => {
   )
   const created = await response.json()
   return { ok: true, contact: { resourceName: created.resourceName, etag: created.etag || '' } }
+})
+
+
+ipcMain.handle('google:contacts:update', async (_event, payload) => {
+  const clientId = payload?.clientId
+  const contact = payload?.contact || {}
+  if (!clientId) throw new Error('Client ID do Google não configurado.')
+  if (!/^people\/[^/]+$/.test(String(contact.resourceName || ''))) throw new Error('Identificador de contato inválido.')
+  if (!contact.etag || !Array.isArray(contact.sources) || !contact.sources.length) {
+    throw new Error('Metadados do contato Google ausentes. Atualize a análise e tente novamente.')
+  }
+  const person = {
+    resourceName: contact.resourceName,
+    etag: contact.etag,
+    metadata: { sources: contact.sources },
+    names: [{ givenName: String(contact.name || '').trim() }],
+    emailAddresses: contact.email ? [{ value: String(contact.email).trim() }] : [],
+    phoneNumbers: contact.phone ? [{ value: String(contact.phone).trim() }] : [],
+    organizations: contact.company ? [{ name: String(contact.company).trim() }] : []
+  }
+  const fields = 'names,emailAddresses,phoneNumbers,organizations'
+  const response = await googleRequest(
+    `https://people.googleapis.com/v1/${contact.resourceName}:updateContact?updatePersonFields=${fields}`,
+    { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(person) },
+    clientId
+  )
+  const updated = await response.json()
+  return { ok: true, contact: { resourceName: updated.resourceName, etag: updated.etag || '' } }
 })
 
 ipcMain.handle('google:listBackups', async (_event, clientId) => {
