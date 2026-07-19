@@ -4,6 +4,29 @@ const fs = require('fs')
 const http = require('http')
 const crypto = require('crypto')
 
+const allowedExternalProtocols = new Set(['https:', 'http:', 'mailto:'])
+const authorizedCloudFiles = new Set()
+
+function normalizeExternalUrl(value) {
+  const parsed = new URL(String(value))
+  if (!allowedExternalProtocols.has(parsed.protocol)) {
+    throw new Error('Protocolo externo não permitido.')
+  }
+  return parsed.toString()
+}
+
+function authorizeCloudFile(filePath) {
+  authorizedCloudFiles.add(path.resolve(filePath))
+}
+
+function assertAuthorizedCloudFile(filePath) {
+  const resolved = path.resolve(String(filePath || ''))
+  if (!authorizedCloudFiles.has(resolved)) {
+    throw new Error('Arquivo não autorizado. Atualize a lista de backups e tente novamente.')
+  }
+  return resolved
+}
+
 
 function safeFileName(value) {
   return String(value || 'backup').replace(/[<>:"/\\|?*\x00-\x1F]/g, '-').slice(0, 120)
@@ -132,8 +155,24 @@ function createWindow() {
   })
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
+    try {
+      void shell.openExternal(normalizeExternalUrl(url))
+    } catch {
+      // Protocolos desconhecidos permanecem bloqueados.
+    }
     return { action: 'deny' }
+  })
+
+  win.webContents.on('will-navigate', (event, url) => {
+    try {
+      const currentOrigin = new URL(win.webContents.getURL()).origin
+      const targetOrigin = new URL(url).origin
+      if (targetOrigin === currentOrigin) return
+      event.preventDefault()
+      void shell.openExternal(normalizeExternalUrl(url))
+    } catch {
+      event.preventDefault()
+    }
   })
 
   if (isDev) {
@@ -172,6 +211,7 @@ ipcMain.handle('cloud:writeFile', async (_event, payload) => {
   const filename = safeFileName(payload?.filename || `backup-${Date.now()}.json`)
   const filePath = path.join(targetDir, filename)
   fs.writeFileSync(filePath, String(payload?.content || ''), 'utf8')
+  authorizeCloudFile(filePath)
   return { ok: true, filePath }
 })
 
@@ -187,12 +227,14 @@ ipcMain.handle('cloud:listFiles', async (_event, folderPath) => {
       return { name, filePath, size: stats.size, modifiedAt: stats.mtime.toISOString() }
     })
     .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt))
+  files.forEach((file) => authorizeCloudFile(file.filePath))
   return { ok: true, files }
 })
 
 ipcMain.handle('cloud:readFile', async (_event, filePath) => {
-  if (!filePath || !fs.existsSync(filePath)) throw new Error('Arquivo não encontrado.')
-  return { ok: true, content: fs.readFileSync(filePath, 'utf8') }
+  const authorizedPath = assertAuthorizedCloudFile(filePath)
+  if (!fs.existsSync(authorizedPath)) throw new Error('Arquivo não encontrado.')
+  return { ok: true, content: fs.readFileSync(authorizedPath, 'utf8') }
 })
 
 ipcMain.handle('google:connect', async (_event, clientId) => {
@@ -316,7 +358,7 @@ ipcMain.handle('google:listBackups', async (_event, clientId) => {
   return { ok: true, files: (await response.json()).files || [] }
 })
 
-ipcMain.handle('system:openExternal', (_event, url) => shell.openExternal(url))
+ipcMain.handle('system:openExternal', (_event, url) => shell.openExternal(normalizeExternalUrl(url)))
 
 app.whenReady().then(createWindow)
 app.on('activate', () => {
