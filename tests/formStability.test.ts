@@ -46,3 +46,15 @@ test('cadastros críticos definem o campo inicial de foco pelo nome estável', (
   assert.match(crm, /initialFocusSelector="input\[name=\'name\'\]"/)
   assert.match(clients, /initialFocusSelector="input\[name=\'name\'\]"/)
 })
+
+test('WhatsApp oferece exatamente dois canais locais sem exportar dados', () => {
+  const store = read('src/lib/whatsappBusinessStore.ts')
+  const crm = read('src/modules/crm/pages/CrmPage.tsx')
+  const page = read('src/modules/marketing/pages/WhatsAppPage.tsx')
+  assert.match(store, /channel-1/)
+  assert.match(store, /channel-2/)
+  assert.match(crm, /whatsappChannelId/)
+  assert.match(page, /Canal de saída/)
+  assert.doesNotMatch(store, /apiKey|accessToken/)
+  assert.doesNotMatch(page, /fetch\(/)
+})
