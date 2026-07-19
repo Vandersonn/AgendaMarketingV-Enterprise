@@ -1,5 +1,5 @@
 import type { Client, Lead } from './crmTypes'
-import { loadLocal, saveLocal } from './storage'
+import { loadLocal, saveLocal } from './storage.ts'
 
 export interface GoogleContact {
   resourceName: string
