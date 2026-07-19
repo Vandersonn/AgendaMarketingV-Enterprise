@@ -37,3 +37,15 @@ Ela confirma a associação ativa do usuário à organização, o consentimento 
 - A interface atual continua abrindo o WhatsApp manualmente.
 - Templates, webhook de status e caixa de entrada ainda não foram implementados.
 - Mensagens comerciais fora da janela permitida deverão usar templates aprovados pela Meta.
+
+
+## Webhook oficial
+
+Implante `supabase/functions/whatsapp-webhook` e configure:
+
+- `META_WEBHOOK_VERIFY_TOKEN`: valor secreto usado no cadastro do callback.
+- `META_APP_SECRET`: segredo do aplicativo Meta usado para validar `x-hub-signature-256`.
+
+O endpoint aceita o challenge de verificação por `GET`. Eventos `POST` só são processados após validação HMAC SHA-256. Atualizações repetidas são idempotentes pelo ID da mensagem do provedor.
+
+A função atualiza os estados `sent`, `delivered`, `read` e `failed`, além de guardar mensagens recebidas. Tipos não textuais registram apenas o tipo; download de mídia não é realizado.
