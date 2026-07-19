@@ -13,7 +13,8 @@ interface Window {
     disconnectGoogleDrive: () => Promise<{ ok: boolean }>
     uploadGoogleBackup: (payload: { clientId: string; filename: string; content: string }) => Promise<{ ok: boolean; file?: { id: string; name: string; size?: string; modifiedTime?: string } }>
     listGoogleBackups: (clientId: string) => Promise<{ ok: boolean; files: Array<{ id: string; name: string; size?: string; modifiedTime?: string }> }>
-    listGoogleContacts: (clientId: string) => Promise<{ ok: boolean; contacts: Array<{ resourceName: string; etag: string; name: string; email: string; phone: string; company: string }> }>
+    listGoogleContacts: (clientId: string) => Promise<{ ok: boolean; contacts: Array<{ resourceName: string; etag: string; name: string; email: string; phone: string; company: string; sources: Array<Record<string, unknown>> }> }>
     createGoogleContact: (payload: { clientId: string; contact: { name: string; email: string; phone: string; company: string } }) => Promise<{ ok: boolean; contact: { resourceName: string; etag: string } }>
+    updateGoogleContact: (payload: { clientId: string; contact: { resourceName: string; etag: string; sources: Array<Record<string, unknown>>; name: string; email: string; phone: string; company: string } }) => Promise<{ ok: boolean; contact: { resourceName: string; etag: string } }>
   }
 }
